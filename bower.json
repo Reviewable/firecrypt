@@ -1,0 +1,25 @@
+{
+  "name": "firecrypt",
+  "version": "0.1.0",
+  "homepage": "https://github.com/pkaminski/firecrypt",
+  "authors": [
+    "Piotr Kaminski <piotr@ideanest.com>"
+  ],
+  "description": "Transparent encryption for Firebase",
+  "main": "firecrypt.js",
+  "keywords": [
+    "firebase",
+    "encryption"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "firebase": "2.x"
+  }
+}

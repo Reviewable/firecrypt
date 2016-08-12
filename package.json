@@ -1,0 +1,29 @@
+{
+  "name": "firecrypt",
+  "version": "0.1.0",
+  "description": "Transparent encryption for Firebase",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/pkaminski/firecrypt.git"
+  },
+  "keywords": [
+    "firebase",
+    "encryption"
+  ],
+  "author": "Piotr Kaminski <piotr@ideanest.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/pkaminski/firecrypt/issues"
+  },
+  "homepage": "https://github.com/pkaminski/firecrypt",
+  "engines": {
+    "node": ">=4.x"
+  },
+  "dependencies": {
+    "firebase": "^2.4.2"
+  }
+}
