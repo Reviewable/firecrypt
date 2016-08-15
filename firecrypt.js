@@ -1,3 +1,7 @@
+if (typeof require !== 'undefined') {
+  if (typeof LRUCache === 'undefined') LRUCache = require('lru-cache');
+}
+
 (function() {
   'use strict';
 
@@ -5,18 +9,24 @@
   var originalQueryFbp = {};
   var firebaseWrapped = false, spec;
   var encryptString, decryptString;
+  var encryptionCache, decryptionCache;
 
   Firebase.initializeEncryption = function(options, specification) {
-    options.algorithm = options.algorithm || 'aes';
+    options.algorithm = options.algorithm || 'aes-siv';
+    options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
+    encryptString = decryptString = throwNotSetUpError;
+    if (typeof LRUCache === 'function') {
+      encryptionCache = new LRUCache({max: options.cacheSize, length: computeCacheItemSize});
+      decryptionCache = new LRUCache({max: options.cacheSize, length: computeCacheItemSize});
+    }
     switch (options.algorithm) {
-      case 'aes':
+      case 'aes-siv':
         if (!options.key) throw new Error('You must specify a key to use AES encryption.');
         break;
       case 'passthrough':
         encryptString = decryptString = function(str) {return str;};
         break;
       case 'none':
-        encryptString = decryptString = function() {throw new Error('Encryption not set up');};
         break;
       default:
         throw new Error('Unknown encryption algorithm "' + options.algorithm + '".');
@@ -24,6 +34,14 @@
     spec = cleanSpecification(specification);
     wrapFirebase();
   };
+
+  function throwNotSetUpError() {
+    throw new Error('Encryption not set up');
+  }
+
+  function computeCacheItemSize(value, key) {
+    return key.length + (typeof value === 'string' ? value.length : 4);
+  }
 
   function cleanSpecification(def, path) {
     var keys = Object.keys(def);
@@ -74,7 +92,8 @@
   Query.prototype.once = function(eventType, successCallback, failureCallback, context) {
     wrapQueryCallback(successCallback);
     return this._original.once.call(
-      this._query, eventType, successCallback.firecryptCallback, failureCallback, context
+      this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback,
+      context
     ).then(function(snap) {
       return new Snapshot(snap);
     });
@@ -224,12 +243,12 @@
       var decryptedRef = decryptRef(ref);
       decryptedRef.then = ref.then;
       decryptedRef.catch = ref.catch;
-      if (ref.finally) decryptRef.finally = ref.finally;
-      return decryptRef;
+      if (ref.finally) decryptedRef.finally = ref.finally;
+      return decryptedRef;
     });
     interceptWrite('setWithPriority', 0);
     interceptWrite('setPriority');
-    interceptCompute('transaction', 0);
+    interceptTransaction();
     interceptOnDisconnect();
     [
       'on', 'off', 'once', 'orderByChild', 'orderByKey', 'orderByValue', 'orderByPriority',
@@ -253,22 +272,29 @@
     };
   }
 
-  function interceptCompute(methodName, argIndex) {
-    var originalMethod = fbp[methodName];
-    fbp[methodName] = function() {
+  function interceptTransaction() {
+    var originalMethod = fbp.transaction;
+    fbp.transaction = function() {
       var path = refToPath(this);
       var self = encryptRef(this, path);
       var args = Array.prototype.slice.call(arguments);
-      if (argIndex >= 0 && argIndex < args.length) {
-        var originalCompute = args[argIndex];
-        args[argIndex] = function(value) {
-          value = transformValue(path, value, decrypt);
-          value = originalCompute(value);
-          value = transformValue(path, value, encrypt);
-          return value;
+      var originalCompute = args[0];
+      args[0] = originalCompute && function(value) {
+        value = transformValue(path, value, decrypt);
+        value = originalCompute(value);
+        value = transformValue(path, value, encrypt);
+        return value;
+      };
+      if (args.length > 1) {
+        var originalOnComplete = args[1];
+        args[1] = originalOnComplete && function(error, committed, snapshot) {
+          return originalOnComplete(error, committed, new Snapshot(snapshot));
         };
       }
-      return originalMethod.apply(self, args);
+      return originalMethod.apply(self, args).then(function(result) {
+        result.snapshot = new Snapshot(result.snapshot);
+        return result;
+      });
     };
   }
 
@@ -299,7 +325,7 @@
   }
 
   function wrapQueryCallback(callback) {
-    if (callback.firecryptCallback) return;
+    if (!callback || callback.firecryptCallback) return;
     var wrappedCallback = function(snap, previousChildKey) {
       return callback.call(this, new Snapshot(snap), previousChildKey);
     };
@@ -332,8 +358,7 @@
   }
 
   function decryptRef(ref) {
-    var root = ref.root();
-    var path = ref.toString().slice(root.toString().length).split('/');
+    var path = refToPath(ref);
     var changed = false;
     for (var i = 0; i < path.length; i++) {
       var decryptedPathSegment = decrypt(path[i]);
@@ -342,7 +367,7 @@
         changed = true;
       }
     }
-    return changed ? root.child(path.join('/')) : ref;
+    return changed ? ref.root().child(path.join('/')) : ref;
   }
 
   function specForPath(path, def) {
@@ -407,25 +432,38 @@
   }
 
   function refToPath(ref) {
-    if (ref === ref.root()) return [];
-    return ref.toString().slice(ref.root().toString().length).split('/');
+    var root = ref.root();
+    if (ref === root) return [];
+    return decodeURIComponent(ref.toString().slice(root.toString().length)).split('/');
   }
 
   function encrypt(value, type, pattern) {
-    if (pattern === '#') return encryptValue(value, type);
-    if (type !== 'string') {
-      throw new Error('Can\'t encrypt a ' + type + ' using pattern [' + pattern + ']');
+    var cacheKey;
+    if (encryptionCache) {
+      cacheKey = type.charAt(0) + pattern + '\x91' + value;
+      if (encryptionCache.has(cacheKey)) return encryptionCache.get(cacheKey);
     }
-    var match = value.match(compilePattern(pattern));
-    if (!match) {
-      throw new Error('Can\'t encrypt as value doesn\'t match pattern [' + pattern + ']: ' + value);
+    var result;
+    if (pattern === '#') {
+      result = encryptValue(value, type);
+    } else {
+      if (type !== 'string') {
+        throw new Error('Can\'t encrypt a ' + type + ' using pattern [' + pattern + ']');
+      }
+      var match = value.match(compilePattern(pattern));
+      if (!match) {
+        throw new Error(
+          'Can\'t encrypt as value doesn\'t match pattern [' + pattern + ']: ' + value);
+      }
+      var i = 0;
+      result = pattern.replace(/[#\.]/g, function(placeholder) {
+        var part = match[++i];
+        if (placeholder === '#') part = encryptValue(part, 'string');
+        return part;
+      });
     }
-    var i = 0;
-    return pattern.replace(/[#.]/g, function(placeholder) {
-      var part = match[++i];
-      if (placeholder === '#') part = encryptValue(part, 'string');
-      return part;
-    });
+    if (encryptionCache) encryptionCache.set(cacheKey, result);
+    return result;
   }
 
   function encryptValue(value, type) {
@@ -438,29 +476,36 @@
   }
 
   function decrypt(value) {
+    if (decryptionCache && decryptionCache.has(value)) return decryptionCache.get(value);
+    var result;
     var match = value.match(/^\x91(.)([^\x92]*)\x92$/);
     if (match) {
       var decryptedString = decryptString(match[2]);
       switch (match[1]) {
-        case 'S': return decryptedString;
+        case 'S':
+          result = decryptedString;
+          break;
         case 'N':
-          var number = Number(decryptedString);
+          result = Number(decryptedString);
           // Check for NaN, since it's the only value where x !== x.
-          if (number !== number) throw new Error('Invalid encrypted number: ' + decryptedString);
-          return number;
+          if (result !== result) throw new Error('Invalid encrypted number: ' + decryptedString);
+          break;
         case 'B':
-          if (decryptedString === 't') return true;
-          if (decryptedString === 'f') return false;
-          throw new Error('Invalid encrypted boolean: ' + decryptedString);
+          if (decryptedString === 't') result = true;
+          else if (decryptedString === 'f') result = false;
+          else throw new Error('Invalid encrypted boolean: ' + decryptedString);
+          break;
         default:
           throw new Error('Invalid encrypted value type code: ' + match[1]);
       }
     } else {
-      return value.replace(/\x91(.)([^\x92]+)\x92/g, function(match, typeCode, encryptedString) {
+      result = value.replace(/\x91(.)([^\x92]*)\x92/g, function(match, typeCode, encryptedString) {
         if (typeCode !== 'S') throw new Error('Invalid multi-segment encrypted value: ' + typeCode);
         return decryptString(encryptedString);
       });
     }
+    if (decryptionCache) decryptionCache.set(value, result);
+    return result;
   }
 
   function getType(value) {
@@ -478,10 +523,10 @@
   function compilePattern(pattern) {
     var regex = patternRegexes[pattern];
     if (!regex) {
-      regex = patternRegexes[pattern] = pattern
+      regex = patternRegexes[pattern] = new RegExp('^' + pattern
         .replace(/\./g, '#')
         .replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')  // escape regex chars
-        .replace(/#/g, '(.*?)');
+        .replace(/#/g, '(.*?)') + '$');
     }
     return regex;
   }
