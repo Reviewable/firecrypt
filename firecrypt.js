@@ -1,6 +1,15 @@
 if (typeof require !== 'undefined') {
   if (typeof LRUCache === 'undefined') LRUCache = require('lru-cache');
+  if (typeof CryptoJS === 'undefined') CryptoJS = require('crypto-js/core');
+  require('crypto-js/enc-base64');
+  require('cryptojs-extension/build_node/siv');
 }
+
+CryptoJS.enc.Base64UrlSafe = {
+  stringify: CryptoJS.enc.Base64.stringify,
+  parse: CryptoJS.enc.Base64.parse,
+  _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+};
 
 (function() {
   'use strict';
@@ -12,16 +21,28 @@ if (typeof require !== 'undefined') {
   var encryptionCache, decryptionCache;
 
   Firebase.initializeEncryption = function(options, specification) {
-    options.algorithm = options.algorithm || 'aes-siv';
     options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
+    options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
+    options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
     encryptString = decryptString = throwNotSetUpError;
     if (typeof LRUCache === 'function') {
-      encryptionCache = new LRUCache({max: options.cacheSize, length: computeCacheItemSize});
-      decryptionCache = new LRUCache({max: options.cacheSize, length: computeCacheItemSize});
+      encryptionCache = new LRUCache({
+        max: options.encryptionCacheSize, length: computeCacheItemSize
+      });
+      decryptionCache = new LRUCache({
+        max: options.decryptionCacheSize, length: computeCacheItemSize
+      });
     }
     switch (options.algorithm) {
       case 'aes-siv':
         if (!options.key) throw new Error('You must specify a key to use AES encryption.');
+        var siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(options.key));
+        encryptString = function(str) {
+          return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
+        }
+        decryptString = function(str) {
+          return CryptoJS.enc.Utf8.stringify(siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)));
+        };
         break;
       case 'passthrough':
         encryptString = decryptString = function(str) {return str;};

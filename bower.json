@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "homepage": "https://github.com/pkaminski/firecrypt",
   "authors": [
     "Piotr Kaminski <piotr@ideanest.com>"
@@ -21,6 +21,17 @@
   ],
   "dependencies": {
     "firebase": "2.x",
-    "serialized-lru-cache": "^3.1.0"
+    "serialized-lru-cache": "^3.1.0",
+    "cryptojs-extension": "pkaminski/cryptojs-extension#master"
+  },
+  "overrides": {
+    "cryptojs-extension": {
+      "main": "build/siv.js"
+    },
+    "crypto-js": {
+      "main": [
+        "core.js", "enc-base64.js", "md5.js", "evpkdf.js", "cipher-core.js", "aes.js", "mode-ctr.js"
+      ]
+    }
   }
 }
