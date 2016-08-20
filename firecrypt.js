@@ -83,6 +83,7 @@ CryptoJS.enc.Base64UrlSafe = {
       }
       switch (key.charAt(0)) {
         case '$':
+          if (key === '$') break;
           if (def.$) throw new Error('Multiple wildcard keys in specification at ' + path);
           def.$ = def[key];
           delete def[key];
@@ -259,14 +260,7 @@ CryptoJS.enc.Base64UrlSafe = {
     if (firebaseWrapped) return;
     interceptWrite('set', 0);
     interceptWrite('update', 0);
-    interceptWrite('remove');
-    interceptWrite('push', 0, function(ref) {
-      var decryptedRef = decryptRef(ref);
-      decryptedRef.then = ref.then;
-      decryptedRef.catch = ref.catch;
-      if (ref.finally) decryptedRef.finally = ref.finally;
-      return decryptedRef;
-    });
+    interceptPush();
     interceptWrite('setWithPriority', 0);
     interceptWrite('setPriority');
     interceptTransaction();
@@ -290,6 +284,20 @@ CryptoJS.enc.Base64UrlSafe = {
       var result = originalMethod.apply(self, args);
       if (resultFilter) result = resultFilter(result);
       return result;
+    };
+  }
+
+  function interceptPush() {
+    // Firebase.push delegates to Firebase.set, which will take care of encrypting the ref and the
+    // argument.
+    var originalMethod = fbp.push;
+    fbp.push = function() {
+      var ref = originalMethod.apply(this, arguments);
+      var decryptedRef = decryptRef(ref);
+      decryptedRef.then = ref.then;
+      decryptedRef.catch = ref.catch;
+      if (ref.finally) decryptedRef.finally = ref.finally;
+      return decryptedRef;
     };
   }
 
@@ -379,7 +387,7 @@ CryptoJS.enc.Base64UrlSafe = {
   }
 
   function decryptRef(ref) {
-    var path = refToPath(ref);
+    var path = refToPath(ref, true);
     var changed = false;
     for (var i = 0; i < path.length; i++) {
       var decryptedPathSegment = decrypt(path[i]);
@@ -452,10 +460,15 @@ CryptoJS.enc.Base64UrlSafe = {
     return value;
   }
 
-  function refToPath(ref) {
+  function refToPath(ref, encrypted) {
     var root = ref.root();
     if (ref === root) return [];
-    return decodeURIComponent(ref.toString().slice(root.toString().length)).split('/');
+    var pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
+    if (!encrypted && pathStr && pathStr.charAt(0) !== '.' &&
+        /[\x00-\x1f\x7f\x91\x92\.#$\[\]]/.test(pathStr)) {
+      throw new Error('Path contains invalid characters: ' + pathStr);
+    }
+    return pathStr.split('/');
   }
 
   function encrypt(value, type, pattern) {
