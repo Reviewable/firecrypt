@@ -159,7 +159,7 @@ CryptoJS.enc.Base64UrlSafe = {
     return this._delegate('limit', arguments);
   };
   Query.prototype.ref = function() {
-    return this._original.ref.call(this._query);
+    return decryptRef(this._original.ref.call(this._query));
   };
   Query.prototype._delegate = function(methodName, args) {
     return new Query(this._original[methodName].apply(this._query, args), this._order);
