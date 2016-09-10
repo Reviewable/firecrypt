@@ -329,7 +329,7 @@ CryptoJS.enc.Base64UrlSafe = {
         };
       }
       return originalMethod.apply(self, args).then(function(result) {
-        result.snapshot = new Snapshot(result.snapshot);
+        result.snapshot = result.snapshot && new Snapshot(result.snapshot);
         return result;
       });
     };
