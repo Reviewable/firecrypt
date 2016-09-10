@@ -17,6 +17,8 @@
   "undef": true,
   "unused": "vars",
   "globals": {
-    "Firebase": false
+    "Firebase": false,
+    "CryptoJS": false,
+    "LRUCache": false
   }
 }

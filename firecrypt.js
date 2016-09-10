@@ -19,8 +19,10 @@ CryptoJS.enc.Base64UrlSafe = {
   var firebaseWrapped = false, spec;
   var encryptString, decryptString;
   var encryptionCache, decryptionCache;
+  var KEY_SIGNATURE_TOKEN = 'cTL2JTOdHtdJoPql20oLqQPI6Xmh+RIqr7ae8Vsg/uI';
 
   Firebase.initializeEncryption = function(options, specification) {
+    var result;
     options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
     options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
     options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
@@ -39,10 +41,15 @@ CryptoJS.enc.Base64UrlSafe = {
         var siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(options.key));
         encryptString = function(str) {
           return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
-        }
+        };
         decryptString = function(str) {
           return CryptoJS.enc.Utf8.stringify(siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)));
         };
+        if (options.keySignature) {
+          result = decryptString(options.keySignature) === KEY_SIGNATURE_TOKEN;
+        } else {
+          result = encryptString(KEY_SIGNATURE_TOKEN);
+        }
         break;
       case 'passthrough':
         encryptString = decryptString = function(str) {return str;};
@@ -54,6 +61,7 @@ CryptoJS.enc.Base64UrlSafe = {
     }
     spec = cleanSpecification(specification);
     wrapFirebase();
+    return result;
   };
 
   function throwNotSetUpError() {
@@ -317,7 +325,7 @@ CryptoJS.enc.Base64UrlSafe = {
       if (args.length > 1) {
         var originalOnComplete = args[1];
         args[1] = originalOnComplete && function(error, committed, snapshot) {
-          return originalOnComplete(error, committed, new Snapshot(snapshot));
+          return originalOnComplete(error, committed, snapshot && new Snapshot(snapshot));
         };
       }
       return originalMethod.apply(self, args).then(function(result) {
