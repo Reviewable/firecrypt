@@ -1,4 +1,5 @@
 if (typeof require !== 'undefined') {
+  if (typeof Firebase === 'undefined') Firebase = require('firebase');
   if (typeof LRUCache === 'undefined') LRUCache = require('lru-cache');
   if (typeof CryptoJS === 'undefined') CryptoJS = require('crypto-js/core');
   require('crypto-js/enc-base64');
@@ -19,7 +20,7 @@ CryptoJS.enc.Base64UrlSafe = {
   var firebaseWrapped = false, spec;
   var encryptString, decryptString;
   var encryptionCache, decryptionCache;
-  var KEY_SIGNATURE_TOKEN = 'cTL2JTOdHtdJoPql20oLqQPI6Xmh+RIqr7ae8Vsg/uI';
+  var KEY_SIGNATURE_TOKEN = 'fbc';  // a random but constant string
 
   Firebase.initializeEncryption = function(options, specification) {
     var result;
@@ -38,18 +39,7 @@ CryptoJS.enc.Base64UrlSafe = {
     switch (options.algorithm) {
       case 'aes-siv':
         if (!options.key) throw new Error('You must specify a key to use AES encryption.');
-        var siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(options.key));
-        encryptString = function(str) {
-          return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
-        };
-        decryptString = function(str) {
-          return CryptoJS.enc.Utf8.stringify(siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)));
-        };
-        if (options.keySignature) {
-          result = decryptString(options.keySignature) === KEY_SIGNATURE_TOKEN;
-        } else {
-          result = encryptString(KEY_SIGNATURE_TOKEN);
-        }
+        result = setupAesSiv(options.key);
         break;
       case 'passthrough':
         encryptString = decryptString = function(str) {return str;};
@@ -63,6 +53,23 @@ CryptoJS.enc.Base64UrlSafe = {
     wrapFirebase();
     return result;
   };
+
+  function setupAesSiv(key) {
+    var siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
+    var keySignature = CryptoJS.enc.Base64UrlSafe.stringify(
+      CryptoJS.ext.rightmostBytes(siv.encrypt(KEY_SIGNATURE_TOKEN), KEY_SIGNATURE_TOKEN.length));
+    encryptString = function(str) {
+      return keySignature + '!' + CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
+    };
+    decryptString = function(str) {
+      if (str.slice(0, keySignature.length) !== keySignature) {
+        throw new Error('Wrong decryption key');
+      }
+      return CryptoJS.enc.Utf8.stringify(siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(
+        str.slice(str.indexOf('!') + 1))));
+    };
+    return keySignature;
+  }
 
   function throwNotSetUpError() {
     throw new Error('Encryption not set up');
@@ -79,7 +86,8 @@ CryptoJS.enc.Base64UrlSafe = {
       if (key === '.encrypt') {
         var encryptKeys = Object.keys(def[key]);
         for (var j = 0; j < encryptKeys.length; j++) {
-          if (encryptKeys[j] !== 'key' && encryptKeys[j] !== 'value') {
+          var encryptKey = encryptKeys[j];
+          if (encryptKey !== 'key' && encryptKey !== 'value' && encryptKey !== 'few') {
             throw new Error('Illegal .encrypt subkey: ' + encryptKeys[j]);
           }
         }
