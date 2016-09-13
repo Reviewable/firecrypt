@@ -20,7 +20,6 @@ CryptoJS.enc.Base64UrlSafe = {
   var firebaseWrapped = false, spec;
   var encryptString, decryptString;
   var encryptionCache, decryptionCache;
-  var KEY_SIGNATURE_TOKEN = 'fbc';  // a random but constant string
 
   Firebase.initializeEncryption = function(options, specification) {
     var result;
@@ -39,7 +38,7 @@ CryptoJS.enc.Base64UrlSafe = {
     switch (options.algorithm) {
       case 'aes-siv':
         if (!options.key) throw new Error('You must specify a key to use AES encryption.');
-        result = setupAesSiv(options.key);
+        result = setupAesSiv(options.key, options.keyCheckValue);
         break;
       case 'passthrough':
         encryptString = decryptString = function(str) {return str;};
@@ -54,25 +53,28 @@ CryptoJS.enc.Base64UrlSafe = {
     return result;
   };
 
-  function setupAesSiv(key) {
+  function setupAesSiv(key, checkValue) {
     var siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
-    var keySignature = CryptoJS.enc.Base64UrlSafe.stringify(
-      CryptoJS.ext.rightmostBytes(siv.encrypt(KEY_SIGNATURE_TOKEN), KEY_SIGNATURE_TOKEN.length));
     encryptString = function(str) {
-      return keySignature + '!' + CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
+      return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
     };
     decryptString = function(str) {
-      if (str.slice(0, keySignature.length) !== keySignature) {
-        throw new Error('Wrong decryption key');
+      var result = siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str));
+      if (result === false) {
+        var e = new Error('Wrong decryption key');
+        e.firecrypt = 'WRONG_KEY';
+        throw e;
       }
-      return CryptoJS.enc.Utf8.stringify(siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(
-        str.slice(str.indexOf('!') + 1))));
+      return CryptoJS.enc.Utf8.stringify(result);
     };
-    return keySignature;
+    if (checkValue) decryptString(checkValue);
+    return encryptString(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));
   }
 
   function throwNotSetUpError() {
-    throw new Error('Encryption not set up');
+    var e = new Error('Encryption not set up');
+    e.firecrypt = 'NO_KEY';
+    throw e;
   }
 
   function computeCacheItemSize(value, key) {
