@@ -1,0 +1,20 @@
+{
+  "bitwise": true,
+  "camelcase": true,
+  "eqeqeq": true,
+  "esversion": 6,
+  "freeze": true,
+  "indent": 2,
+  "latedef": "nofunc",
+  "loopfunc": true,
+  "maxlen": 100,
+  "newcap": true,
+  "noarg": true,
+  "nocomma": true,
+  "node": true,
+  "quotmark": "single",
+  "singleGroups": true,
+  "strict": true,
+  "undef": true,
+  "unused": "vars"
+}

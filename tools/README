@@ -1,0 +1,15 @@
+A command-line tool for rotating the encryption key of a Firebase database that has been encrypted with [`firecrypt`](https://www.npmjs.com/package/firecrypt).  It can also remove the encryption altogether, or add it to an unencrypted database.
+
+You should ensure that nobody accesses the database while the keys are being rotated.  Also be careful that any parts of your database not explicitly described in the `firecrypt` rules files but situated under an encrypted key are small enough to be read and written in a single chunk.
+
+Options:
+
+```
+  -f, --firebase database   The unique id of the target realtime database (required).
+  -a, --auth secret         A master secret to authenticate with for the target database (required).
+  -s, --spec file           The firecrypt rules JSON file (required).
+  -o, --oldKey base64key    The old encryption key to be replaced.
+  -n, --newKey base64key    The new encryption key to use.
+  -h, --help                Display these usage instructions.
+  -v, --verbose             Turn on verbose logging messages for debugging
+```
