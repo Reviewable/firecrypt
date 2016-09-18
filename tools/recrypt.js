@@ -198,62 +198,69 @@ function *traverseSpec(def, oldPath, newPath, copy) {
 
 function transformSmall(value, def, oldPath, newPath) {
   log('transformSmall', oldPath);
-  value = transformSmallHelper(value, def);
-  if (value !== ALREADY_RECRYPTED) {
-    const updates = {[newPath]: value};
+  const newValue = transformSmallHelper(value, def);
+  if (oldPath !== newPath || newValue !== ALREADY_RECRYPTED) {
+    const updates = {[newPath]: newValue === ALREADY_RECRYPTED ? value : newValue};
     if (newPath !== oldPath) updates[oldPath] = null;
     queueUpdates(updates);
   }
-  return value;
 }
 
 function transformSmallHelper(value, def) {
-  if (_.isObject(value)) {
+  const flags = def['.encrypt'] || {};
+  if (flags.children) {
     let allAlreadyRecrypted = true;
     _.each(_.keys(value), oldKey => {
       const key = decrypt(oldKey);
       if (key === ALREADY_RECRYPTED) return;
       const subDef = def[key] || def.$;
       if (!subDef) return;
-      const flags = subDef['.encrypt'];
-      if (!flags) return;
-      const newKey = flags.key ? encrypt(key) : key;
-      let newValue = ALREADY_RECRYPTED;
-      if (flags.value) newValue = recrypt(value[oldKey], flags.value);
-      else if (flags.children) newValue = transformSmallHelper(value[oldKey], subDef);
-      if (newKey !== oldKey || newValue !== ALREADY_RECRYPTED) {
-        value[newKey] = newValue === ALREADY_RECRYPTED ? value[oldKey] : newValue;
-        if (newKey !== oldKey) delete value[oldKey];
+      const subFlags = subDef['.encrypt'];
+      if (!subFlags) return;
+      if (subFlags.value || subFlags.children) {
+        const newValue = transformSmallHelper(value[oldKey], subDef);
+        if (newValue !== ALREADY_RECRYPTED) {
+          value[oldKey] = newValue;
+          allAlreadyRecrypted = false;
+        }
+      }
+      const newKey = subFlags.key ? encrypt(key) : key;
+      if (newKey !== oldKey) {
+        value[newKey] = value[oldKey];
+        delete value[oldKey];
         allAlreadyRecrypted = false;
       }
     });
-    value = allAlreadyRecrypted ? ALREADY_RECRYPTED : value;
-  } else {
-    const flags = def['.encrypt'] || {};
-    value = flags.value ? recrypt(value, flags.value) : ALREADY_RECRYPTED;
+    if (allAlreadyRecrypted) value = ALREADY_RECRYPTED;
+  } else if (flags.value) {
+    const newValue = decrypt(value);
+    if (newValue === value && !newSiv) {
+      value = ALREADY_RECRYPTED;
+    } else if (newValue !== ALREADY_RECRYPTED && newSiv) {
+      value = encrypt(newValue, flags.value);
+    } else {
+      value = newValue;
+    }
   }
   return value;
 }
 
 function traverseSmall(value, def, oldPath, newPath) {
   log('traverseSmall', oldPath);
-  if (_.isObject(value)) {
+  const flags = def['.encrypt'] || {};
+  if (flags.children) {
     _.each(_.keys(value), oldKey => {
       const key = decrypt(oldKey);
       if (key === ALREADY_RECRYPTED) return;
       const subDef = def[key] || def.$;
       if (!subDef) return;
-      const flags = subDef['.encrypt'];
-      if (!flags) return;
-      if (flags.key) {
-        transformSmall(value[oldKey], subDef, join(oldPath, oldKey), join(newPath, encrypt(key)));
-      } else if (flags.value) {
-        queueUpdates({[join(newPath, key)]: recrypt(value[oldKey], flags.value)});
-      } else if (flags.children) {
-        traverseSmall(value[oldKey], subDef, join(oldPath, oldKey), join(newPath, key));
-      }
+      const subFlags = subDef['.encrypt'] || {};
+      if (!(subFlags.key || subFlags.value || subFlags.children)) return;
+      const newKey = subFlags.key ? encrypt(key, subFlags.key) : key;
+      const subOldPath = join(oldPath, oldKey), subNewPath = join(newPath, newKey);
+      traverseSmall(value[oldKey], subDef, subOldPath, subNewPath);
     });
-  } else {
+  } else if (flags.key || flags.value) {
     transformSmall(value, def, oldPath, newPath);
   }
 }
@@ -310,15 +317,8 @@ function estimateUpdatesSize(object) {
   return size;
 }
 
-function recrypt(value, pattern) {
-  const decryptedValue = decrypt(value);
-  if (decryptedValue === ALREADY_RECRYPTED) return ALREADY_RECRYPTED;
-  if (!newSiv && value === decryptedValue) return ALREADY_RECRYPTED;
-  return encrypt(decryptedValue, pattern);
-}
-
 function decrypt(value) {
-  if (!/\x91/.test(value)) return value;
+  if (!(_.isString(value) && /\x91/.test(value))) return value;
   const match = value.match(/^\x91(.)([^\x92]*)\x92$/);
   if (match) {
     const decryptedString = decryptOldString(match[2]);
@@ -385,10 +385,9 @@ function encrypt(value, pattern, siv) {
 }
 
 function decryptOldString(str) {
-  const raw = CryptoJS.enc.Base64UrlSafe.parse(str);
-  let result = oldSiv ? oldSiv.decrypt(raw) : false;
+  let result = oldSiv ? oldSiv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)) : false;
   if (result === false) {
-    result = newSiv ? newSiv.decrypt(raw) : false;
+    result = newSiv ? newSiv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)) : false;
     if (result !== false) return ALREADY_RECRYPTED;
     var e = new Error('Wrong decryption key');
     e.firecrypt = 'WRONG_KEY';
