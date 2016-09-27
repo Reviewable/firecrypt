@@ -1,6 +1,6 @@
-# firecrypt &mdash; transparent encryption for Firebase
+# firecrypt &mdash; transparent at-rest AES encryption for Firebase
 
-(See also [`firecrypt-tools`](https://github.com/pkaminski/firecrypt/tree/master/tools) for related utilities.)
+First: this library only makes sense if your clients sit behind a firewall, or if you control who can get an account and anonymous users don't need to access encrypted data.  Otherwise, the encryption key will be public defeating the whole point.
 
 This library monkey-patches the Firebase JavaScript SDK (currently only version 2.4.2) to automatically encrypt and decrypt keys and values of your choosing using AES-SIV.  Almost everything just works, except that `startAt` and `endAt` queries on encrypted data would produce randomly ordered results and so are forbidden.  `equalTo` queries will work fine, however, since a given plaintext value will always encrypt to the same ciphertext &mdash; but it will also let an attacker know if any two values are equal, even if they don't know what they are.
 
@@ -46,4 +46,4 @@ You must specify value encryption at the atomic data leaves only &mdash; it's no
 
 For bulk encryption/decryption (including key rotation), you can also specify `".encrypt": {"few": true}` on wildcard keys (whether encrypted or not) where the number of children is expected to be low enough that it's reasonable to read or write them all at once.
 
-You may want to check out [`fireplan`](https://github.com/pkaminski/fireplan) for a convenient way to generate the encryption specification from your security rules schema.
+You may want to check out [`fireplan`](https://github.com/pkaminski/fireplan) for a convenient way to generate the encryption specification from your security rules schema.  See also [`firecrypt-tools`](https://github.com/pkaminski/firecrypt/tree/master/tools) for related utilities.
