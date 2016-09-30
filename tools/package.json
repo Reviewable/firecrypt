@@ -1,6 +1,6 @@
 {
   "name": "firecrypt-tools",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Utilities for managing a Firebase encrypted with firecrypt",
   "main": "recrypt.js",
   "bin": {
@@ -29,6 +29,7 @@
   "homepage": "https://github.com/pkaminski/firecrypt#readme",
   "dependencies": {
     "agentkeepalive": "^2.2.0",
+    "async-co": "^1.1.0",
     "co": "^4.6.0",
     "command-line-args": "^3.0.1",
     "command-line-usage": "^3.0.3",

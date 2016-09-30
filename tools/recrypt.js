@@ -4,6 +4,7 @@
 const _ = require('lodash');
 const co = require('co');
 const commandLineArgs = require('command-line-args');
+const eachLimit = require('async-co/eachLimit');
 const fs = require('mz/fs');
 const getUsage = require('command-line-usage');
 const HttpsAgent = require('agentkeepalive').HttpsAgent;
@@ -25,11 +26,6 @@ CryptoJS.enc.Base64UrlSafe = {
 
 NodeFire.setCacheSize(0);
 
-const agent = new HttpsAgent({
-  keepAliveMsecs: ms('1s'), keepAliveTimeout: ms('15s'), timeout: ms('30s'), maxSockets: 3,
-  maxFreeSockets: 1
-});
-
 const commandLineOptions = [
   {name: 'firebase', alias: 'f',
    typeLabel: '[underline]{database}',
@@ -48,8 +44,9 @@ const commandLineOptions = [
    description: 'The new encryption key to use.'},
   {name: 'help', alias: 'h',
    description: 'Display these usage instructions.'},
-  {name: 'verbose', alias: 'v',
-   description: 'Turn on verbose logging messages for debugging'}
+  {name: 'log', alias: 'l',
+   typeLabel: '[underline]{file}',
+   description: 'Stream logging messages to a file for debugging'}
 ];
 
 const usageSpec = [
@@ -81,17 +78,25 @@ try {
   process.exit(1);
 }
 
+const logWriteStream = args.log ? fs.createWriteStream(args.log) : null;
+
 const firebaseUrl = 'https://' + args.firebase + '.firebaseio.com';
 const firebaseAuth = args.auth;
 const db = new NodeFire(firebaseUrl);
 const oldSiv = args.oldKey && CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(args.oldKey));
 const newSiv = args.newKey && CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(args.newKey));
 
-const MAX_UPDATES_SIZE = 1000, MAX_UPDATES_IN_FLIGHT = 10, MAX_UPDATE_TRIES = 5;
+const MAX_KEY_REQUESTS_IN_FLIGHT = 5;
+const MAX_UPDATES_SIZE = 500, MAX_UPDATES_IN_FLIGHT = 10, MAX_UPDATE_TRIES = 5;
 let updatesBatch = {}, updatesBatchSize = 0, allUpdatesPromise = Promise.resolve();
 const runningUpdatePromises = [];
 
-const pace = args.verbose ? {total: 0, op: () => null} : require('pace')(1);
+const agent = new HttpsAgent({
+  keepAliveMsecs: ms('1s'), keepAliveTimeout: ms('15s'), timeout: ms('30s'),
+  maxSockets: MAX_KEY_REQUESTS_IN_FLIGHT, maxFreeSockets: 1
+});
+
+const pace = require('pace')(1);
 
 co(function*() {
   const results = yield [
@@ -104,6 +109,7 @@ co(function*() {
   flushUpdates();
   pace.op();
   yield allUpdatesPromise;
+  if (logWriteStream) yield logWriteStream.end();
 }).then(() => {
   process.exit(0);
 }, e => {
@@ -175,23 +181,26 @@ function *traverse(def, oldPath, newPath, copy) {
 }
 
 function *traverseWildcard(def, oldPath, newPath, copy) {
-  log('traverseWildcard', oldPath);
+  log('traverseWildcard', oldPath, copy ? 'copy' : '');
   const keys = yield requestKeys(oldPath);
-  yield _.map(keys, oldKey => {
+  pace.total += keys.length;
+  yield eachLimit(keys, 10, oldKey => {
     const key = decrypt(oldKey);
     if (key === ALREADY_RECRYPTED) return Promise.resolve();
     const keyFlags = (def[key] || def.$ || {})['.encrypt'] || {};
     const newKey = keyFlags.key ? encrypt(key, keyFlags.key) : key;
+    pace.op();
     return traverse(def[key] || def.$, join(oldPath, oldKey), join(newPath, newKey), copy);
   });
 }
 
 function *traverseSpec(def, oldPath, newPath, copy) {
-  log('traverseSpec', oldPath);
+  log('traverseSpec', oldPath, copy ? 'copy' : '');
   yield _.map(_.keys(def), key => {
+    if (key === '.encrypt') return Promise.resolve();
     const keyFlags = def[key]['.encrypt'] || {};
-    const oldKey = keyFlags.key ? encrypt(key, keyFlags.key, oldSiv) : key;
-    const newKey = keyFlags.key ? encrypt(key, keyFlags.key) : key;
+    const oldKey = NodeFire.escape(keyFlags.key ? encrypt(key, keyFlags.key, oldSiv) : key);
+    const newKey = NodeFire.escape(keyFlags.key ? encrypt(key, keyFlags.key) : key);
     return traverse(def[key], join(oldPath, oldKey), join(newPath, newKey), copy);
   });
 }
@@ -224,7 +233,7 @@ function transformSmallHelper(value, def) {
           allAlreadyRecrypted = false;
         }
       }
-      const newKey = subFlags.key ? encrypt(key) : key;
+      const newKey = subFlags.key ? encrypt(key, subFlags.key) : key;
       if (newKey !== oldKey) {
         value[newKey] = value[oldKey];
         delete value[oldKey];
@@ -266,14 +275,16 @@ function traverseSmall(value, def, oldPath, newPath) {
 }
 
 function queueUpdates(updates) {
-  log('queueUpdates', updates);
   const size = estimateUpdatesSize(updates);
   if (size >= MAX_UPDATES_SIZE) {
     // send it out by itself
+    log('sendUpdates', size);
+    sendUpdates(updates);
     return;
   } else if (updatesBatchSize + size > MAX_UPDATES_SIZE) {
     flushUpdates();
   }
+  log('queueUpdates', size);
   _.extend(updatesBatch, updates);
   updatesBatchSize += size;
 }
@@ -281,9 +292,12 @@ function queueUpdates(updates) {
 function flushUpdates() {
   if (_.isEmpty(updatesBatch)) return;
   log('flushUpdates', updatesBatchSize);
-  const updates = updatesBatch;
+  sendUpdates(updatesBatch);
   updatesBatch = {};
   updatesBatchSize = 0;
+}
+
+function sendUpdates(updates) {
   pace.total += 1;
 
   allUpdatesPromise = allUpdatesPromise.then(() => {
@@ -293,11 +307,11 @@ function flushUpdates() {
     let tries = 1;
     const promise = db.update(updates).catch(e => {
       if (tries < MAX_UPDATE_TRIES) {
-        console.log('Retrying update due to', e.toString());
+        log('Retrying update due to', e.toString());
         tries++;
         return db.update(updates);
       }
-      console.log(updates);
+      log(updates);
       console.log('Update failed', tries, 'times, aborting');
       process.exit(1);
     }).then(() => {
@@ -438,21 +452,30 @@ function requestKeys(path) {
     let tries = 0;
     const uriPath =
       '/' + _(path.split('/')).compact().map(part => encodeURIComponent(part)).join('/');
-    const req = () => request(
-      {uri: firebaseUrl + uriPath + '.json', qs: {auth: firebaseAuth, shallow: true}, agent: agent},
-      (error, response, data) => {
+    const req = () => {
+      log('requestKeys', path);
+      request({
+        uri: firebaseUrl + uriPath + '.json', qs: {auth: firebaseAuth, shallow: true}, agent: agent
+      }, (error, response, data) => {
         if (!error) {
           try {
-            resolve(_(JSON.parse(data)).keys().map(decode).value());
+            const regex = /"(.*?)"/g, keys = [];
+            let match;
+            // jshint boss:true
+            while (match = regex.exec(data)) keys.push(match[1]);  // don't unescape keys!
+            // jshint boss:false
             pace.op();
-            return;
+            resolve(keys);
           } catch (e) {
             error = e;
           }
         }
-        if (++tries <= 3) req(); else {pace.op(); reject(error);}
-      }
-    );
+        if (error) {
+          log('requestKeys', path, error);
+          if (++tries <= 3) req(); else {pace.op(); reject(error);}
+        }
+      });
+    };
     req();
   });
 }
@@ -461,13 +484,9 @@ function join() {
   return _(arguments).toArray().compact().join('/');
 }
 
-function decode(string) {
-  return string.replace(/\\../g, function(match) {
-    return String.fromCharCode(parseInt(match.slice(1), 16));
-  });
-}
-
 function log() {
-  if (args.verbose) console.log.apply(console, arguments);
+  if (logWriteStream) {
+    logWriteStream.write(_(arguments).toArray().invokeMap('toString').join(' ') + '\n');
+  }
 }
 
