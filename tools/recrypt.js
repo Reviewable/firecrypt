@@ -2,27 +2,17 @@
 'use strict';
 
 const _ = require('lodash');
+const childProcess = require('child_process');
 const co = require('co');
 const commandLineArgs = require('command-line-args');
-const eachLimit = require('async-co/eachLimit');
-const fs = require('mz/fs');
+const fs = require('fs');
 const getUsage = require('command-line-usage');
 const HttpsAgent = require('agentkeepalive').HttpsAgent;
 const ms = require('ms');
 const NodeFire = require('nodefire');
+const os = require('os');
 const request = require('request');
-
-const CryptoJS = require('crypto-js/core');
-require('crypto-js/enc-base64');
-require('cryptojs-extension/build_node/siv');
-
-const ALREADY_RECRYPTED = {};
-
-CryptoJS.enc.Base64UrlSafe = {
-  stringify: CryptoJS.enc.Base64.stringify,
-  parse: CryptoJS.enc.Base64.parse,
-  _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
-};
+const streamToPromise = require('stream-to-promise');
 
 NodeFire.setCacheSize(0);
 
@@ -42,11 +32,14 @@ const commandLineOptions = [
   {name: 'newKey', alias: 'n',
    typeLabel: '[underline]{base64key}',
    description: 'The new encryption key to use.'},
+  {name: 'cpus', alias: 'c', defaultValue: os.cpus().length,
+   typeLabel: '[underline]{number}',
+   description: 'The number of CPUs to use (defaults to all available).'},
   {name: 'help', alias: 'h',
    description: 'Display these usage instructions.'},
   {name: 'log', alias: 'l',
    typeLabel: '[underline]{file}',
-   description: 'Stream logging messages to a file for debugging'}
+   description: 'Stream logging messages to a file for debugging.'}
 ];
 
 const usageSpec = [
@@ -58,6 +51,11 @@ const usageSpec = [
   },
   {header: 'Options', optionList: commandLineOptions}
 ];
+
+const MAX_KEY_REQUESTS_IN_FLIGHT = 5;
+const SMALL_COMMANDS_THRESHOLD = 1000, WILDCARD_KEYS_CHUNK_SIZE = 250;
+const MAX_UPDATES_SIZE = 500, MAX_UPDATES_IN_FLIGHT = 10, MAX_UPDATE_TRIES = 5;
+const MILLION = 1048576;
 
 
 const args = commandLineArgs(commandLineOptions);
@@ -78,44 +76,264 @@ try {
   process.exit(1);
 }
 
-const logWriteStream = args.log ? fs.createWriteStream(args.log) : null;
+_.extend(exports, {traverse, queueUpdates});
 
+const logWriteStream = args.log ? fs.createWriteStream(args.log) : null;
 const firebaseUrl = 'https://' + args.firebase + '.firebaseio.com';
 const firebaseAuth = args.auth;
 const db = new NodeFire(firebaseUrl);
-const oldSiv = args.oldKey && CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(args.oldKey));
-const newSiv = args.newKey && CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(args.newKey));
-
-const MAX_KEY_REQUESTS_IN_FLIGHT = 5;
-const MAX_UPDATES_SIZE = 500, MAX_UPDATES_IN_FLIGHT = 10, MAX_UPDATE_TRIES = 5;
-let updatesBatch = {}, updatesBatchSize = 0, allUpdatesPromise = Promise.resolve();
-const runningUpdatePromises = [];
 
 const agent = new HttpsAgent({
   keepAliveMsecs: ms('1s'), keepAliveTimeout: ms('15s'), timeout: ms('30s'),
   maxSockets: MAX_KEY_REQUESTS_IN_FLIGHT, maxFreeSockets: 1
 });
 
+const spec = expandSpecification(JSON.parse(fs.readFileSync(args.spec))).rules;
+// console.log(JSON.stringify(spec, null, 2));
+
 const pace = require('pace')(1);
+const workers = [];
+
+
+class UpdateQueue {
+  constructor() {
+    this._updatesInFlight = 0;
+    this._queue = [];
+    this._batch = {};
+    this._batchSize = 0;
+    this._stats = {enqueued: 0, sent: 0, delayed: 0, retries: 0};
+  }
+
+  add(updates) {
+    const size = this._estimateSize(updates);
+    if (size >= MAX_UPDATES_SIZE) {
+      // send it out by itself
+      log('sendUpdates', size);
+      this._enqueue(updates);
+      return;
+    } else if (this._batchSize + size > MAX_UPDATES_SIZE) {
+      this._flush();
+    }
+    log('queueUpdates', size);
+    _.extend(this._batch, updates);
+    this._batchSize += size;
+  }
+
+  drain() {
+    if (!this._drainPromise) {
+      this._drainPromise = new Promise(resolve => {this._resolveDrainPromise = resolve;});
+    }
+    this._flush();
+    return this._drainPromise;
+  }
+
+  _refresh() {
+    while (this._updatesInFlight < MAX_UPDATES_IN_FLIGHT && this._queue.length) {
+      this._updatesInFlight += 1;
+      co(this._send(this._queue.shift())).catch(handleFatalError);
+    }
+    if (this._resolveDrainPromise && !this._updatesInFlight && !this._queue.length) {
+      this._resolveDrainPromise();
+    }
+  }
+
+  *_send(updates) {
+    for (let tries = 0; tries < MAX_UPDATE_TRIES; tries++) {
+      try {
+        yield db.update(updates);
+      } catch (e) {
+        log('Retrying update due to', e);
+        this._stats.retries += 1;
+        continue;
+      }
+      this._stats.sent += 1;
+      this._updatesInFlight -= 1;
+      pace.op();
+      this._refresh();
+      return;
+    }
+    log('Update failed', MAX_UPDATE_TRIES, 'times, aborting');
+    log(updates);
+    console.log('\n\nUpdate failed', MAX_UPDATE_TRIES, 'times, aborting');
+    process.exit(1);
+  }
+
+  _flush() {
+    if (!_.isEmpty(this._batch)) {
+      log('flushUpdates', this._batchSize);
+      this._enqueue(this._batch);
+      this._batch = {};
+      this._batchSize = 0;
+    }
+    this._refresh();
+  }
+
+  _enqueue(updates) {
+    pace.total += 1;
+    this._queue.push(updates);
+    this._refresh();
+    if (this._queue.length) this._stats.delayed += 1;
+    if (++this._stats.enqueued % 10 === 0) {
+      log('updateStats', _.map(this._stats, (value, key) => `${key}: ${value}`).join(', '));
+    }
+  }
+
+  _estimateSize(object) {
+    if (!_.isObject(object)) return 0;
+    return _.reduce(object, (size, value) => size + this._estimateSize(value), _.size(object));
+  }
+}
+
+const updateQueue = new UpdateQueue();
+
+function queueUpdates(updates) {
+  updateQueue.add(updates);
+}
+
+
+class CommandQueue {
+  constructor() {
+    this._bigCommands = [];
+    this._smallCommands = [];
+    this._numPendingCalls = 0;
+    this._numAdds = 0;
+  }
+
+  add() {
+    pace.total += 1;
+    const command = {cmd: 'call', fn: arguments[0], args: _.slice(arguments, 1)};
+    switch (command.fn) {
+      case 'traverseWildcard':
+      case 'traverseSpec':
+        this._bigCommands.push(command);
+        break;
+      case 'traverseSmall':
+      case 'transformSmall':
+        this._smallCommands.push(command);
+        break;
+      default:
+        throw new Error('Unknown command: ' + command.fn);
+    }
+    this.refresh();
+    if (++this._numAdds % 1000 === 0) {
+      let mem = process.memoryUsage();
+      log(
+        `commandStats big: ${this._bigCommands.length}, small: ${this._smallCommands.length},`,
+        `rss: ${_.round(mem.rss / MILLION)}, heap: ${_.round(mem.heapUsed / MILLION)}`
+      );
+    }
+  }
+
+  drain() {
+    if (!this._completePromise) {
+      this._completePromise = new Promise(resolve => {this._resolveCompletePromise = resolve;});
+    }
+    return this._completePromise;
+  }
+
+  refresh() {
+    let worker;
+    while ((this._smallCommands.length || this._bigCommands.length) &&
+           (worker = _.find(workers, 'ready'))) {
+      const numRunningSmallCommands = _(workers).reject('ready').filter('small').size();
+      const commands =
+        this._smallCommands.length && (
+          this._smallCommands.length > SMALL_COMMANDS_THRESHOLD ||
+          numRunningSmallCommands < args.cpus / 2 ||
+          !this._bigCommands.length) ? this._smallCommands : this._bigCommands;
+      const command = _.pullAt(commands, _.random(commands.length - 1))[0];
+      worker.execute(command, commands === this._smallCommands);
+    }
+    if (this._resolveCompletePromise && !this._numPendingCalls && !this._bigCommands.length &&
+        !this._smallCommands.length && _.every(workers, 'ready')) {
+      this._resolveCompletePromise();
+    }
+  }
+
+  waitFor(callResult) {
+    if (callResult && typeof callResult.next === 'function' &&
+        typeof callResult.throw === 'function') {
+      this._numPendingCalls++;
+      co(callResult).then(() => {
+        this._numPendingCalls--;
+        this.refresh();
+      }, handleFatalError);
+    }
+  }
+}
+
+const commandQueue = new CommandQueue();
+
+
+class Worker {
+  constructor(index) {
+    this.index = index;
+    const initOptions = {cmd: 'init', spec};
+    if (args.newKey) initOptions.newKey = args.newKey;
+    if (args.oldKey) initOptions.oldKey = args.oldKey;
+    this.ready = true;
+    this.child = childProcess.fork('recrypt_worker.js');
+    this.child.on('message', msg => this.handleMessage(msg));
+    this.child.on('exit', ev => this.handleExit(ev));
+    this.child.on('error', ev => this.handleError(ev));
+    this.child.send(initOptions);
+  }
+
+  handleMessage(msg) {
+    switch (msg.cmd) {
+      case 'ready':
+        pace.op();
+        this.ready = true;
+        commandQueue.refresh();
+        break;
+      case 'call':
+        commandQueue.waitFor(exports[msg.fn].apply(null, msg.args));
+        break;
+      case 'stats':
+        log('workerStats', _.map(msg.stats, (stat, key) => {
+          const hitRate = _.round(stat.hits / Math.max(stat.hits + stat.misses, 1) * 100, 1);
+          return `${key}: ${hitRate}% of ${stat.hits + stat.misses}`;
+        }).join(', '));
+        break;
+      default:
+        throw new Error('Invalid message from worker: ' + msg.cmd);
+    }
+  }
+
+  handleExit(ev) {
+    console.log('\n\nChild worker exited prematurely, aborting');
+    process.exit(1);
+  }
+
+  handleError(ev) {
+    console.log('\n\nChild worker error:', ev.err);
+    process.exit(1);
+  }
+
+  execute(command, small) {
+    this.ready = false;
+    this.small = small;
+    log(command.fn, command.args[1]);
+    this.child.send(command);
+  }
+}
+
 
 co(function*() {
-  const results = yield [
-    db.auth(firebaseAuth),
-    fs.readFile(args.spec)
-  ];
-  const spec = expandSpecification(JSON.parse(results[1]));
-  // console.log(JSON.stringify(spec, null, 2));
-  yield traverse(spec.rules, '', '');
-  flushUpdates();
+  yield db.auth(firebaseAuth);
+  _.times(args.cpus, i => {workers.push(new Worker(i + 1));});
+  yield traverse('', '', '');
+  yield commandQueue.drain();
+  yield updateQueue.drain();
   pace.op();
-  yield allUpdatesPromise;
-  if (logWriteStream) yield logWriteStream.end();
+  if (logWriteStream) {
+    const logPromise = streamToPromise(logWriteStream);
+    logWriteStream.end();
+    yield logPromise;
+  }
 }).then(() => {
   process.exit(0);
-}, e => {
-  console.log(e.stack);
-  process.exit(1);
-});
+}, handleFatalError);
 
 
 function expandSpecification(def, path) {
@@ -148,303 +366,41 @@ function expandSpecification(def, path) {
   return def;
 }
 
-function *traverse(def, oldPath, newPath, copy) {
+function *traverse(specPath, oldPath, newPath, copy) {
+  const def = defForPath(specPath);
   try {
     const flags = def['.encrypt'] || {};
-    copy = copy || flags.key || flags.value;
-    if (!(flags.children || copy)) return;
     if (copy && !flags.big) {
       pace.total += 1;
       const leaf = yield db.child(oldPath).get();
       pace.op();
-      if (leaf) transformSmall(leaf, def, oldPath, newPath);
+      if (leaf) commandQueue.add('transformSmall', specPath, oldPath, newPath, leaf);
     } else {
       if (def.$) {
         if (flags.big) {
-          yield traverseWildcard(def, oldPath, newPath, copy);
+          const keys = yield requestKeys(oldPath);
+          _.each(_.chunk(keys, WILDCARD_KEYS_CHUNK_SIZE), keysChunk => {
+            commandQueue.add('traverseWildcard', specPath, oldPath, newPath, copy, keysChunk);
+          });
         } else {
           // !flags.big && !copy
           pace.total += 1;
           const leaf = yield db.child(oldPath).get();
           pace.op();
-          if (leaf) traverseSmall(leaf, def, oldPath, newPath);
+          if (leaf) commandQueue.add('traverseSmall', specPath, oldPath, newPath, leaf);
         }
       } else {
-        yield traverseSpec(def, oldPath, newPath, copy);
+        commandQueue.add('traverseSpec', specPath, oldPath, newPath, copy);
       }
     }
   } catch (e) {
+    e.specPath = specPath;
     e.oldPath = oldPath;
     e.newPath = newPath;
     throw e;
   }
 }
 
-function *traverseWildcard(def, oldPath, newPath, copy) {
-  log('traverseWildcard', oldPath, copy ? 'copy' : '');
-  const keys = yield requestKeys(oldPath);
-  pace.total += keys.length;
-  yield eachLimit(keys, 10, oldKey => {
-    const key = decrypt(oldKey);
-    if (key === ALREADY_RECRYPTED) return Promise.resolve();
-    const keyFlags = (def[key] || def.$ || {})['.encrypt'] || {};
-    const newKey = keyFlags.key ? encrypt(key, keyFlags.key) : key;
-    pace.op();
-    return traverse(def[key] || def.$, join(oldPath, oldKey), join(newPath, newKey), copy);
-  });
-}
-
-function *traverseSpec(def, oldPath, newPath, copy) {
-  log('traverseSpec', oldPath, copy ? 'copy' : '');
-  yield _.map(_.keys(def), key => {
-    if (key === '.encrypt') return Promise.resolve();
-    const keyFlags = def[key]['.encrypt'] || {};
-    const oldKey = NodeFire.escape(keyFlags.key ? encrypt(key, keyFlags.key, oldSiv) : key);
-    const newKey = NodeFire.escape(keyFlags.key ? encrypt(key, keyFlags.key) : key);
-    return traverse(def[key], join(oldPath, oldKey), join(newPath, newKey), copy);
-  });
-}
-
-function transformSmall(value, def, oldPath, newPath) {
-  log('transformSmall', oldPath);
-  const newValue = transformSmallHelper(value, def);
-  if (oldPath !== newPath || newValue !== ALREADY_RECRYPTED) {
-    const updates = {[newPath]: newValue === ALREADY_RECRYPTED ? value : newValue};
-    if (newPath !== oldPath) updates[oldPath] = null;
-    queueUpdates(updates);
-  }
-}
-
-function transformSmallHelper(value, def) {
-  const flags = def['.encrypt'] || {};
-  if (flags.children) {
-    let allAlreadyRecrypted = true;
-    _.each(_.keys(value), oldKey => {
-      const key = decrypt(oldKey);
-      if (key === ALREADY_RECRYPTED) return;
-      const subDef = def[key] || def.$;
-      if (!subDef) return;
-      const subFlags = subDef['.encrypt'];
-      if (!subFlags) return;
-      if (subFlags.value || subFlags.children) {
-        const newValue = transformSmallHelper(value[oldKey], subDef);
-        if (newValue !== ALREADY_RECRYPTED) {
-          value[oldKey] = newValue;
-          allAlreadyRecrypted = false;
-        }
-      }
-      const newKey = subFlags.key ? encrypt(key, subFlags.key) : key;
-      if (newKey !== oldKey) {
-        value[newKey] = value[oldKey];
-        delete value[oldKey];
-        allAlreadyRecrypted = false;
-      }
-    });
-    if (allAlreadyRecrypted) value = ALREADY_RECRYPTED;
-  } else if (flags.value) {
-    const newValue = decrypt(value);
-    if (newValue === value && !newSiv) {
-      value = ALREADY_RECRYPTED;
-    } else if (newValue !== ALREADY_RECRYPTED && newSiv) {
-      value = encrypt(newValue, flags.value);
-    } else {
-      value = newValue;
-    }
-  }
-  return value;
-}
-
-function traverseSmall(value, def, oldPath, newPath) {
-  log('traverseSmall', oldPath);
-  const flags = def['.encrypt'] || {};
-  if (flags.children) {
-    _.each(_.keys(value), oldKey => {
-      const key = decrypt(oldKey);
-      if (key === ALREADY_RECRYPTED) return;
-      const subDef = def[key] || def.$;
-      if (!subDef) return;
-      const subFlags = subDef['.encrypt'] || {};
-      if (!(subFlags.key || subFlags.value || subFlags.children)) return;
-      const newKey = subFlags.key ? encrypt(key, subFlags.key) : key;
-      const subOldPath = join(oldPath, oldKey), subNewPath = join(newPath, newKey);
-      traverseSmall(value[oldKey], subDef, subOldPath, subNewPath);
-    });
-  } else if (flags.key || flags.value) {
-    transformSmall(value, def, oldPath, newPath);
-  }
-}
-
-function queueUpdates(updates) {
-  const size = estimateUpdatesSize(updates);
-  if (size >= MAX_UPDATES_SIZE) {
-    // send it out by itself
-    log('sendUpdates', size);
-    sendUpdates(updates);
-    return;
-  } else if (updatesBatchSize + size > MAX_UPDATES_SIZE) {
-    flushUpdates();
-  }
-  log('queueUpdates', size);
-  _.extend(updatesBatch, updates);
-  updatesBatchSize += size;
-}
-
-function flushUpdates() {
-  if (_.isEmpty(updatesBatch)) return;
-  log('flushUpdates', updatesBatchSize);
-  sendUpdates(updatesBatch);
-  updatesBatch = {};
-  updatesBatchSize = 0;
-}
-
-function sendUpdates(updates) {
-  pace.total += 1;
-
-  allUpdatesPromise = allUpdatesPromise.then(() => {
-    if (runningUpdatePromises.length >= MAX_UPDATES_IN_FLIGHT) {
-      return Promise.race(runningUpdatePromises);
-    }
-    let tries = 1;
-    const promise = db.update(updates).catch(e => {
-      if (tries < MAX_UPDATE_TRIES) {
-        log('Retrying update due to', e.toString());
-        tries++;
-        return db.update(updates);
-      }
-      log(updates);
-      console.log('Update failed', tries, 'times, aborting');
-      process.exit(1);
-    }).then(() => {
-      _.pull(runningUpdatePromises, promise);
-      pace.op();
-    });
-    runningUpdatePromises.push(promise);
-    return promise;
-  });
-}
-
-function estimateUpdatesSize(object) {
-  if (!_.isObject(object)) return 0;
-  let size = 0;
-  _.each(object, value => {size += estimateUpdatesSize(value);});
-  size += _.size(object);
-  return size;
-}
-
-function decrypt(value) {
-  if (!(_.isString(value) && /\x91/.test(value))) return value;
-  const match = value.match(/^\x91(.)([^\x92]*)\x92$/);
-  if (match) {
-    const decryptedString = decryptOldString(match[2]);
-    if (decryptedString === ALREADY_RECRYPTED) return ALREADY_RECRYPTED;
-    switch (match[1]) {
-      case 'S':
-        value = decryptedString;
-        break;
-      case 'N':
-        value = Number(decryptedString);
-        // Check for NaN, since it's the only value where x !== x.
-        if (value !== value) throw new Error('Invalid encrypted number: ' + decryptedString);
-        break;
-      case 'B':
-        if (decryptedString === 't') value = true;
-        else if (decryptedString === 'f') value = false;
-        else throw new Error('Invalid encrypted boolean: ' + decryptedString);
-        break;
-      default:
-        throw new Error('Invalid encrypted value type code: ' + match[1]);
-    }
-  } else {
-    let allOld = true, allNew = true;
-    value = value.replace(/\x91(.)([^\x92]*)\x92/g, function(match, typeCode, encryptedString) {
-      if (typeCode !== 'S') throw new Error('Invalid multi-segment encrypted value: ' + typeCode);
-      const decryptedString = decryptOldString(encryptedString);
-      if (decryptedString === ALREADY_RECRYPTED) {
-        allOld = false;
-        return encryptedString;
-      } else {
-        allNew = false;
-        return decryptedString;
-      }
-    });
-    if (allNew) return ALREADY_RECRYPTED;
-    if (!allOld) throw new Error('Patterned value partially recrypted');
-  }
-  return value;
-}
-
-function encrypt(value, pattern, siv) {
-  siv = siv || newSiv;
-  if (!siv) return value;
-  var type = getType(value);
-  if (pattern === '#') {
-    value = encryptValue(value, type, siv);
-  } else {
-    if (type !== 'string') {
-      throw new Error('Can\'t encrypt a ' + type + ' using pattern [' + pattern + ']');
-    }
-    const match = value.match(compilePattern(pattern));
-    if (!match) {
-      throw new Error(
-        'Can\'t encrypt as value doesn\'t match pattern [' + pattern + ']: ' + value);
-    }
-    let i = 0;
-    value = pattern.replace(/[#\.]/g, function(placeholder) {
-      let part = match[++i];
-      if (placeholder === '#') part = encryptValue(part, 'string', siv);
-      return part;
-    });
-  }
-  return value;
-}
-
-function decryptOldString(str) {
-  let result = oldSiv ? oldSiv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)) : false;
-  if (result === false) {
-    result = newSiv ? newSiv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)) : false;
-    if (result !== false) return ALREADY_RECRYPTED;
-    var e = new Error('Wrong decryption key');
-    e.firecrypt = 'WRONG_KEY';
-    throw e;
-  }
-  return CryptoJS.enc.Utf8.stringify(result);
-}
-
-function encryptValue(value, type, siv) {
-  if (!/^(string|number|boolean)$/.test(type)) throw new Error('Can\'t encrypt a ' + type);
-  switch (type) {
-    case 'number': value = '' + value; break;
-    case 'boolean': value = value ? 't' : 'f'; break;
-  }
-  return '\x91' + type.charAt(0).toUpperCase() + encryptString(value, siv) + '\x92';
-}
-
-function encryptString(str, siv) {
-  return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
-}
-
-function getType(value) {
-  if (Array.isArray(value)) return 'array';
-  let type = typeof value;
-  if (type === 'object') {
-    if (value instanceof String) type = 'string';
-    else if (value instanceof Number) type = 'number';
-    else if (value instanceof Boolean) type = 'boolean';
-  }
-  return type;
-}
-
-const patternRegexes = {};
-function compilePattern(pattern) {
-  let regex = patternRegexes[pattern];
-  if (!regex) {
-    regex = patternRegexes[pattern] = new RegExp('^' + pattern
-      .replace(/\./g, '#')
-      .replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')  // escape regex chars
-      .replace(/#/g, '(.*?)') + '$');
-  }
-  return regex;
-}
 
 function requestKeys(path) {
   pace.total += 1;
@@ -480,8 +436,9 @@ function requestKeys(path) {
   });
 }
 
-function join() {
-  return _(arguments).toArray().compact().join('/');
+function defForPath(path) {
+  if (!path) return spec;
+  return _.reduce(path.split('/'), (def, segment) => def[segment], spec);
 }
 
 function log() {
@@ -490,3 +447,8 @@ function log() {
   }
 }
 
+function handleFatalError(e) {
+  console.log('\n');
+  console.log(e.stack);
+  process.exit(1);
+}
