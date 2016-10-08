@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Transparent encryption for Firebase",
   "main": "index.js",
   "scripts": {
@@ -24,7 +24,7 @@
     "node": ">=4.x"
   },
   "dependencies": {
-    "crypto-js": "^3.1.6",
+    "crypto-js": "^3.1.7",
     "cryptojs-extension": "pkaminski/cryptojs-extension",
     "firebase": "^2.4.2",
     "serialized-lru-cache": "^3.1.0"
