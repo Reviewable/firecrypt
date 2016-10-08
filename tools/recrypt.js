@@ -236,13 +236,13 @@ class CommandQueue {
     while ((this._smallCommands.length || this._bigCommands.length) &&
            (worker = _.find(workers, 'ready'))) {
       const numRunningSmallCommands = _(workers).reject('ready').filter('small').size();
-      const commands =
+      const small =
         this._smallCommands.length && (
           this._smallCommands.length > SMALL_COMMANDS_THRESHOLD ||
           numRunningSmallCommands < args.cpus / 2 ||
-          !this._bigCommands.length) ? this._smallCommands : this._bigCommands;
-      const command = _.pullAt(commands, _.random(commands.length - 1))[0];
-      worker.execute(command, commands === this._smallCommands);
+          !this._bigCommands.length);
+      const command = (small ? this._smallCommands : this._bigCommands).pop();
+      worker.execute(command, small);
     }
     if (this._resolveCompletePromise && !this._numPendingCalls && !this._bigCommands.length &&
         !this._smallCommands.length && _.every(workers, 'ready')) {
@@ -290,7 +290,7 @@ class Worker {
         commandQueue.waitFor(exports[msg.fn].apply(null, msg.args));
         break;
       case 'stats':
-        log('workerStats', _.map(msg.stats, (stat, key) => {
+        log('workerStats', this.index, _.map(msg.stats, (stat, key) => {
           const hitRate = _.round(stat.hits / Math.max(stat.hits + stat.misses, 1) * 100, 1);
           return `${key}: ${hitRate}% of ${stat.hits + stat.misses}`;
         }).join(', '));

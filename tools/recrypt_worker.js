@@ -260,7 +260,6 @@ function decryptOldString(str) {
 }
 
 function encryptValue(value, type, siv) {
-  if (!/^(string|number|boolean)$/.test(type)) throw new Error('Can\'t encrypt a ' + type);
   switch (type) {
     case 'number': value = '' + value; break;
     case 'boolean': value = value ? 't' : 'f'; break;
