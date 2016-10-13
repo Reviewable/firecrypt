@@ -194,7 +194,7 @@ CryptoJS.enc.Base64UrlSafe = {
     var order = {by: by};
     var encryptedChildKey;
     if (def) {
-      var childPath = childKey.split('/');
+      var childPath = childKey && childKey.split('/');
       for (var subKey in def) {
         if (!def.hasOwnProperty(subKey)) continue;
         var subDef = def[subKey];
