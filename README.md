@@ -1,5 +1,7 @@
 # firecrypt &mdash; transparent at-rest AES encryption for Firebase
 
+[![Project Status: Active - The project has reached a stable, usable state and is being actively developed.](http://www.repostatus.org/badges/latest/active.svg)](http://www.repostatus.org/#active)
+
 First: this library only makes sense if your clients sit behind a firewall, or if you control who can get an account and anonymous users don't need to access encrypted data.  Otherwise, the encryption key will be public defeating the whole point.
 
 This library monkey-patches the Firebase JavaScript SDK (currently only version 2.4.2) to automatically encrypt and decrypt keys and values of your choosing using AES-SIV.  Almost everything just works, except that `startAt` and `endAt` queries on encrypted data would produce randomly ordered results and so are forbidden.  `equalTo` queries will work fine, however, since a given plaintext value will always encrypt to the same ciphertext &mdash; but it will also let an attacker know if any two values are equal, even if they don't know what they are.
