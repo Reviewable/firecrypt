@@ -4,6 +4,11 @@ if (typeof require !== 'undefined') {
   if (typeof CryptoJS === 'undefined') CryptoJS = require('crypto-js/core');
   require('crypto-js/enc-base64');
   require('cryptojs-extension/build_node/siv');
+  try {
+    require('firebase-childrenkeys');
+  } catch (e) {
+    // ignore, not installed
+  }
 }
 
 CryptoJS.enc.Base64UrlSafe = {
@@ -281,6 +286,7 @@ CryptoJS.enc.Base64UrlSafe = {
     interceptPush();
     interceptWrite('setWithPriority', 0);
     interceptWrite('setPriority');
+    if (fbp.childrenKeys) interceptChildrenKeys();
     interceptTransaction();
     interceptOnDisconnect();
     [
@@ -290,7 +296,7 @@ CryptoJS.enc.Base64UrlSafe = {
     firebaseWrapped = true;
   }
 
-  function interceptWrite(methodName, argIndex, resultFilter) {
+  function interceptWrite(methodName, argIndex) {
     var originalMethod = fbp[methodName];
     fbp[methodName] = function() {
       var path = refToPath(this);
@@ -299,9 +305,7 @@ CryptoJS.enc.Base64UrlSafe = {
       if (argIndex >= 0 && argIndex < args.length) {
         args[argIndex] = transformValue(path, args[argIndex], encrypt);
       }
-      var result = originalMethod.apply(self, args);
-      if (resultFilter) result = resultFilter(result);
-      return result;
+      return originalMethod.apply(self, args);
     };
   }
 
@@ -316,6 +320,16 @@ CryptoJS.enc.Base64UrlSafe = {
       decryptedRef.catch = ref.catch;
       if (ref.finally) decryptedRef.finally = ref.finally;
       return decryptedRef;
+    };
+  }
+
+  function interceptChildrenKeys() {
+    var originalMethod = fbp.childrenKeys;
+    fbp.childrenKeys = function() {
+      return originalMethod.apply(encryptRef(this), arguments).then(function(keys) {
+        if (!keys.some(function(key) {return /\x91/.test(key);})) return keys;
+        return keys.map(decrypt);
+      });
     };
   }
 
@@ -529,6 +543,7 @@ CryptoJS.enc.Base64UrlSafe = {
 
   function decrypt(value) {
     if (decryptionCache && decryptionCache.has(value)) return decryptionCache.get(value);
+    if (!/\x91/.test(value)) return value;
     var result;
     var match = value.match(/^\x91(.)([^\x92]*)\x92$/);
     if (match) {
