@@ -259,7 +259,7 @@ CryptoJS.enc.Base64UrlSafe = {
       var self = utils.encryptRef(this, path);
       var args = Array.prototype.slice.call(arguments);
       if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = utils.transformValue(path, args[argIndex], encrypt);
+        args[argIndex] = utils.transformValue(path, args[argIndex], utils.encrypt);
       }
       return originalMethod.apply(self, args);
     };
@@ -297,9 +297,9 @@ CryptoJS.enc.Base64UrlSafe = {
       var args = Array.prototype.slice.call(arguments);
       var originalCompute = args[0];
       args[0] = originalCompute && function(value) {
-        value = utils.transformValue(path, value, decrypt);
+        value = utils.transformValue(path, value, utils.decrypt);
         value = originalCompute(value);
-        value = utils.transformValue(path, value, encrypt);
+        value = utils.transformValue(path, value, utils.encrypt);
         return value;
       };
       if (args.length > 1) {
