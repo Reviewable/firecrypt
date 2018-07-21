@@ -1,1 +1,1 @@
-module.exports = require('./firecrypt.js');
+module.exports = require('./src/firecrypt.js');

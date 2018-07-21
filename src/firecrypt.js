@@ -22,23 +22,24 @@ CryptoJS.enc.Base64UrlSafe = {
 
   var fbp = Firebase.prototype;
   var originalQueryFbp = {};
-  var firebaseWrapped = false, spec;
+  var firebaseWrapped = false;
   var encryptString, decryptString;
-  var encryptionCache, decryptionCache;
+
+  var utils = require('./utils');
 
   Firebase.initializeEncryption = function(options, specification) {
     var result;
     options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
     options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
     options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
-    encryptString = decryptString = throwNotSetUpError;
+    encryptString = decryptString = utils.throwNotSetUpError;
     if (typeof LRUCache === 'function') {
-      encryptionCache = new LRUCache({
-        max: options.encryptionCacheSize, length: computeCacheItemSize
-      });
-      decryptionCache = new LRUCache({
-        max: options.decryptionCacheSize, length: computeCacheItemSize
-      });
+      utils.setEncryptionCache(new LRUCache({
+        max: options.encryptionCacheSize, length: utils.computeCacheItemSize
+      }));
+      utils.setDecryptionCache(new LRUCache({
+        max: options.decryptionCacheSize, length: utils.computeCacheItemSize
+      }));
     }
     switch (options.algorithm) {
       case 'aes-siv':
@@ -53,7 +54,7 @@ CryptoJS.enc.Base64UrlSafe = {
       default:
         throw new Error('Unknown encryption algorithm "' + options.algorithm + '".');
     }
-    spec = cleanSpecification(specification);
+    utils.setSpec(specification);
     wrapFirebase();
     return result;
   };
@@ -75,50 +76,6 @@ CryptoJS.enc.Base64UrlSafe = {
     if (checkValue) decryptString(checkValue);
     return encryptString(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));
   }
-
-  function throwNotSetUpError() {
-    var e = new Error('Encryption not set up');
-    e.firecrypt = 'NO_KEY';
-    throw e;
-  }
-
-  function computeCacheItemSize(value, key) {
-    return key.length + (typeof value === 'string' ? value.length : 4);
-  }
-
-  function cleanSpecification(def, path) {
-    var keys = Object.keys(def);
-    for (var i = 0; i < keys.length; i++) {
-      var key = keys[i];
-      if (key === '.encrypt') {
-        var encryptKeys = Object.keys(def[key]);
-        for (var j = 0; j < encryptKeys.length; j++) {
-          var encryptKey = encryptKeys[j];
-          if (encryptKey !== 'key' && encryptKey !== 'value' && encryptKey !== 'few') {
-            throw new Error('Illegal .encrypt subkey: ' + encryptKeys[j]);
-          }
-        }
-      } else {
-        if (/[\x00-\x1f\x7f\x91\x92\.#\[\]/]/.test(key) || /[$]/.test(key.slice(1))) {
-          throw new Error('Illegal character in specification key: ' + key);
-        }
-        cleanSpecification(def[key], (path || '') + '/' + key);
-      }
-      switch (key.charAt(0)) {
-        case '$':
-          if (key === '$') break;
-          if (def.$) throw new Error('Multiple wildcard keys in specification at ' + path);
-          def.$ = def[key];
-          delete def[key];
-          break;
-        case '.':
-          if (key !== '.encrypt') throw new Error('Unknown directive at ' + path + ': ' + key);
-          break;
-      }
-    }
-    return def;
-  }
-
 
   function Query(query, order, original) {
     this._query = query;
@@ -165,10 +122,10 @@ CryptoJS.enc.Base64UrlSafe = {
   };
   Query.prototype.equalTo = function(value, key) {
     if (this._order[this._order.by + 'Encrypted']) {
-      value = encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
+      value = utils.encrypt(value, utils.getType(value), this._order[this._order.by + 'Encrypted']);
     }
     if (key !== undefined && this._order.keyEncrypted) {
-      key = encrypt(key, 'string', this._order.keyEncrypted);
+      key = utils.encrypt(key, 'string', this._order.keyEncrypted);
     }
     return new Query(this._original.equalTo.call(this._query, value, key), this._order);
   };
@@ -182,7 +139,7 @@ CryptoJS.enc.Base64UrlSafe = {
     return this._delegate('limit', arguments);
   };
   Query.prototype.ref = function() {
-    return decryptRef(this._original.ref.call(this._query));
+    return utils.decryptRef(this._original.ref.call(this._query));
   };
   Query.prototype._delegate = function(methodName, args) {
     return new Query(this._original[methodName].apply(this._query, args), this._order);
@@ -195,7 +152,7 @@ CryptoJS.enc.Base64UrlSafe = {
     }
   };
   Query.prototype._orderBy = function(methodName, by, childKey) {
-    var def = specForPath(refToPath(this.ref()));
+    var def = utils.specForPath(utils.refToPath(this.ref()));
     var order = {by: by};
     var encryptedChildKey;
     if (def) {
@@ -208,11 +165,11 @@ CryptoJS.enc.Base64UrlSafe = {
           if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
         }
         if (childKey) {
-          var childDef = specForPath(childPath, subDef);
+          var childDef = utils.specForPath(childPath, subDef);
           if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
             order.childEncrypted = childDef['.encrypt'].value;
           }
-          var encryptedChildKeyCandidate = encryptPath(childPath, subDef).join('/');
+          var encryptedChildKeyCandidate = utils.encryptPath(childPath, subDef).join('/');
           if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
             throw new Error(
               'Incompatible encryption specifications for orderByChild("' + childKey + '")');
@@ -231,8 +188,8 @@ CryptoJS.enc.Base64UrlSafe = {
 
 
   function Snapshot(snap) {
-    this._ref = decryptRef(snap.ref());
-    this._path = refToPath(this._ref);
+    this._ref = utils.decryptRef(snap.ref());
+    this._path = utils.refToPath(this._ref);
     this._snap = snap;
   }
   delegateSnapshot('exists');
@@ -240,7 +197,7 @@ CryptoJS.enc.Base64UrlSafe = {
   delegateSnapshot('numChildren');
   delegateSnapshot('getPriority');
   Snapshot.prototype.val = function() {
-    return transformValue(this._path, this._snap.val(), decrypt);
+    return utils.transformValue(this._path, this._snap.val(), utils.decrypt);
   };
   Snapshot.prototype.child = function(childPath) {
     return new Snapshot(this._snap.child(childPath));
@@ -251,7 +208,7 @@ CryptoJS.enc.Base64UrlSafe = {
     });
   };
   Snapshot.prototype.hasChild = function(childPath) {
-    childPath = encryptPath(childPath.split('/'), specForPath(this._path)).join('/');
+    childPath = utils.encryptPath(childPath.split('/'), utils.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   };
   Snapshot.prototype.key = function() {
@@ -264,9 +221,8 @@ CryptoJS.enc.Base64UrlSafe = {
     return this._ref;
   };
   Snapshot.prototype.exportVal = function() {
-    return transformValue(this._path, this._snap.exportVal(), decrypt);
+    return utils.transformValue(this._path, this._snap.exportVal(), utils.decrypt);
   };
-
 
   function OnDisconnect(path, originalOnDisconnect) {
     this._path = path;
@@ -299,11 +255,11 @@ CryptoJS.enc.Base64UrlSafe = {
   function interceptWrite(methodName, argIndex) {
     var originalMethod = fbp[methodName];
     fbp[methodName] = function() {
-      var path = refToPath(this);
-      var self = encryptRef(this, path);
+      var path = utils.refToPath(this);
+      var self = utils.encryptRef(this, path);
       var args = Array.prototype.slice.call(arguments);
       if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = transformValue(path, args[argIndex], encrypt);
+        args[argIndex] = utils.transformValue(path, args[argIndex], encrypt);
       }
       return originalMethod.apply(self, args);
     };
@@ -315,7 +271,7 @@ CryptoJS.enc.Base64UrlSafe = {
     var originalMethod = fbp.push;
     fbp.push = function() {
       var ref = originalMethod.apply(this, arguments);
-      var decryptedRef = decryptRef(ref);
+      var decryptedRef = utils.decryptRef(ref);
       decryptedRef.then = ref.then;
       decryptedRef.catch = ref.catch;
       if (ref.finally) decryptedRef.finally = ref.finally;
@@ -326,9 +282,9 @@ CryptoJS.enc.Base64UrlSafe = {
   function interceptChildrenKeys() {
     var originalMethod = fbp.childrenKeys;
     fbp.childrenKeys = function() {
-      return originalMethod.apply(encryptRef(this), arguments).then(function(keys) {
+      return originalMethod.apply(utils.encryptRef(this), arguments).then(function(keys) {
         if (!keys.some(function(key) {return /\x91/.test(key);})) return keys;
-        return keys.map(decrypt);
+        return keys.map(utils.decrypt);
       });
     };
   }
@@ -336,14 +292,14 @@ CryptoJS.enc.Base64UrlSafe = {
   function interceptTransaction() {
     var originalMethod = fbp.transaction;
     fbp.transaction = function() {
-      var path = refToPath(this);
-      var self = encryptRef(this, path);
+      var path = utils.refToPath(this);
+      var self = utils.encryptRef(this, path);
       var args = Array.prototype.slice.call(arguments);
       var originalCompute = args[0];
       args[0] = originalCompute && function(value) {
-        value = transformValue(path, value, decrypt);
+        value = utils.transformValue(path, value, decrypt);
         value = originalCompute(value);
-        value = transformValue(path, value, encrypt);
+        value = utils.transformValue(path, value, encrypt);
         return value;
       };
       if (args.length > 1) {
@@ -362,8 +318,8 @@ CryptoJS.enc.Base64UrlSafe = {
   function interceptOnDisconnect() {
     var originalMethod = fbp.onDisconnect;
     fbp.onDisconnect = function() {
-      var path = refToPath(this);
-      return new OnDisconnect(path, originalMethod.call(encryptRef(this, path)));
+      var path = utils.refToPath(this);
+      return new OnDisconnect(path, originalMethod.call(utils.encryptRef(this, path)));
     };
   }
 
@@ -371,8 +327,9 @@ CryptoJS.enc.Base64UrlSafe = {
     OnDisconnect.prototype[methodName] = function() {
       var args = Array.prototype.slice.call(arguments);
       if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = transformValue(this._path, args[argIndex], encrypt);
+        args[argIndex] = utils.transformValue(this._path, args[argIndex], utils.encrypt);
       }
+      console.log('ARGS:', args);
       return this._originalOnDisconnect[methodName].apply(this._originalOnDisconnect, args);
     };
   }
@@ -380,7 +337,7 @@ CryptoJS.enc.Base64UrlSafe = {
   function interceptQuery(methodName) {
     originalQueryFbp[methodName] = fbp[methodName];
     fbp[methodName] = function() {
-      var query = new Query(encryptRef(this), {}, originalQueryFbp);
+      var query = new Query(utils.encryptRef(this), {}, originalQueryFbp);
       return query[methodName].apply(query, arguments);
     };
   }
@@ -399,203 +356,4 @@ CryptoJS.enc.Base64UrlSafe = {
       return this._snap[methodName].apply(this._snap, arguments);
     };
   }
-
-  function encryptPath(path, def) {
-    def = def || spec.rules;
-    path = path.slice();
-    for (var i = 0; i < path.length; i++) {
-      def = def[path[i]] || def.$;
-      if (!def) break;
-      if (def['.encrypt'] && def['.encrypt'].key) {
-        path[i] = encrypt(path[i], 'string', def['.encrypt'].key);
-      }
-    }
-    return path;
-  }
-
-  function encryptRef(ref, path) {
-    var encryptedPath = encryptPath(path || refToPath(ref));
-    return encryptedPath.length ? ref.root().child(encryptedPath.join('/')) : ref.root();
-  }
-
-  function decryptRef(ref) {
-    var path = refToPath(ref, true);
-    var changed = false;
-    for (var i = 0; i < path.length; i++) {
-      var decryptedPathSegment = decrypt(path[i]);
-      if (decryptedPathSegment !== path[i]) {
-        path[i] = decryptedPathSegment;
-        changed = true;
-      }
-    }
-    return changed ? ref.root().child(path.join('/')) : ref;
-  }
-
-  function specForPath(path, def) {
-    def = def || spec.rules;
-    for (var i = 0; def && i < path.length; i++) {
-      def = def[path[i]] || def.$;
-    }
-    return def;
-  }
-
-  function transformValue(path, value, transform) {
-    return transformTree(value, specForPath(path), transform);
-  }
-
-  function transformTree(value, def, transform) {
-    if (!def) return value;
-    var type = getType(value);
-    var i;
-    if (/^(string|number|boolean)$/.test(type)) {
-      if (def['.encrypt'] && def['.encrypt'].value) {
-        value = transform(value, type, def['.encrypt'].value);
-      }
-    } else if (type === 'object' && value !== null) {
-      var transformedValue = {};
-      for (var key in value) {
-        if (!value.hasOwnProperty(key)) continue;
-        var subValue = value[key], subDef;
-        if (key.indexOf('/') >= 0) {  // for deep update keys
-          var keyParts = key.split('/');
-          subDef = def;
-          for (i = 0; i < keyParts.length; i++) {
-            if (transform === decrypt) {
-              keyParts[i] = decrypt(keyParts[i]);
-              subDef = subDef && (subDef[keyParts[i]] || subDef.$);
-            } else {
-              subDef = subDef && (subDef[keyParts[i]] || subDef.$);
-              if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
-                keyParts[i] = transform(keyParts[i], 'string', subDef['.encrypt'].key);
-              }
-            }
-          }
-          key = keyParts.join('/');
-        } else {
-          if (transform === decrypt) {
-            key = decrypt(key);
-            subDef = def[key] || def.$;
-          } else {
-            subDef = def[key] || def.$;
-            if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
-              key = transform(key, 'string', subDef['.encrypt'].key);
-            }
-          }
-        }
-        transformedValue[key] = transformTree(subValue, subDef, transform);
-      }
-      value = transformedValue;
-    } else if (type === 'array') {
-      if (!def.$) return value;
-      for (i = 0; i < value.length; i++) value[i] = transformTree(value[i], def.$, transform);
-    }
-    return value;
-  }
-
-  function refToPath(ref, encrypted) {
-    var root = ref.root();
-    if (ref === root) return [];
-    var pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
-    if (!encrypted && pathStr && pathStr.charAt(0) !== '.' &&
-        /[\x00-\x1f\x7f\x91\x92\.#$\[\]]/.test(pathStr)) {
-      throw new Error('Path contains invalid characters: ' + pathStr);
-    }
-    return pathStr.split('/');
-  }
-
-  function encrypt(value, type, pattern) {
-    var cacheKey;
-    if (encryptionCache) {
-      cacheKey = type.charAt(0) + pattern + '\x91' + value;
-      if (encryptionCache.has(cacheKey)) return encryptionCache.get(cacheKey);
-    }
-    var result;
-    if (pattern === '#') {
-      result = encryptValue(value, type);
-    } else {
-      if (type !== 'string') {
-        throw new Error('Can\'t encrypt a ' + type + ' using pattern [' + pattern + ']');
-      }
-      var match = value.match(compilePattern(pattern));
-      if (!match) {
-        throw new Error(
-          'Can\'t encrypt as value doesn\'t match pattern [' + pattern + ']: ' + value);
-      }
-      var i = 0;
-      result = pattern.replace(/[#\.]/g, function(placeholder) {
-        var part = match[++i];
-        if (placeholder === '#') part = encryptValue(part, 'string');
-        return part;
-      });
-    }
-    if (encryptionCache) encryptionCache.set(cacheKey, result);
-    return result;
-  }
-
-  function encryptValue(value, type) {
-    if (!/^(string|number|boolean)$/.test(type)) throw new Error('Can\'t encrypt a ' + type);
-    switch (type) {
-      case 'number': value = '' + value; break;
-      case 'boolean': value = value ? 't' : 'f'; break;
-    }
-    return '\x91' + type.charAt(0).toUpperCase() + encryptString(value) + '\x92';
-  }
-
-  function decrypt(value) {
-    if (decryptionCache && decryptionCache.has(value)) return decryptionCache.get(value);
-    if (!/\x91/.test(value)) return value;
-    var result;
-    var match = value.match(/^\x91(.)([^\x92]*)\x92$/);
-    if (match) {
-      var decryptedString = decryptString(match[2]);
-      switch (match[1]) {
-        case 'S':
-          result = decryptedString;
-          break;
-        case 'N':
-          result = Number(decryptedString);
-          // Check for NaN, since it's the only value where x !== x.
-          if (result !== result) throw new Error('Invalid encrypted number: ' + decryptedString);
-          break;
-        case 'B':
-          if (decryptedString === 't') result = true;
-          else if (decryptedString === 'f') result = false;
-          else throw new Error('Invalid encrypted boolean: ' + decryptedString);
-          break;
-        default:
-          throw new Error('Invalid encrypted value type code: ' + match[1]);
-      }
-    } else {
-      result = value.replace(/\x91(.)([^\x92]*)\x92/g, function(match, typeCode, encryptedString) {
-        if (typeCode !== 'S') throw new Error('Invalid multi-segment encrypted value: ' + typeCode);
-        return decryptString(encryptedString);
-      });
-    }
-    if (decryptionCache) decryptionCache.set(value, result);
-    return result;
-  }
-
-  function getType(value) {
-    if (Array.isArray(value)) return 'array';
-    var type = typeof value;
-    if (type === 'object') {
-      if (value instanceof String) type = 'string';
-      else if (value instanceof Number) type = 'number';
-      else if (value instanceof Boolean) type = 'boolean';
-    }
-    return type;
-  }
-
-  var patternRegexes = {};
-  function compilePattern(pattern) {
-    var regex = patternRegexes[pattern];
-    if (!regex) {
-      regex = patternRegexes[pattern] = new RegExp('^' + pattern
-        .replace(/\./g, '#')
-        .replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')  // escape regex chars
-        .replace(/#/g, '(.*?)') + '$');
-    }
-    return regex;
-  }
-
 })();
