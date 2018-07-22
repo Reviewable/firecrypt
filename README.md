@@ -49,3 +49,26 @@ You must specify value encryption at the atomic data leaves only &mdash; it's no
 For bulk encryption/decryption (including key rotation), you can also specify `".encrypt": {"few": true}` on wildcard keys (whether encrypted or not) where the number of children is expected to be low enough that it's reasonable to read or write them all at once.
 
 You may want to check out [`fireplan`](https://github.com/pkaminski/fireplan) for a convenient way to generate the encryption specification from your security rules schema.  See also [`firecrypt-tools`](https://github.com/pkaminski/firecrypt/tree/master/tools) for related utilities.
+
+## Local Setup
+
+Run the following commands from the command line to get your local environment set up:
+
+```bash
+$ https://github.com/pkaminski/firecrypt
+$ cd firecrypt    # go to the firecrypt directory
+$ npm install     # install local npm dependencies
+```
+
+To create a non-minified, development build of the library, run the following command:
+
+```bash
+$ npm run build:dev
+```
+
+To create a minified, production distribution build of the library with a corresponding source map,
+run the following command:
+
+```bash
+$ npm run build
+```
