@@ -55,20 +55,17 @@ You may want to check out [`fireplan`](https://github.com/pkaminski/fireplan) fo
 Run the following commands from the command line to get your local environment set up:
 
 ```bash
-$ https://github.com/pkaminski/firecrypt
+$ git clone git@github.com:Reviewable/firecrypt.git
 $ cd firecrypt    # go to the firecrypt directory
 $ npm install     # install local npm dependencies
 ```
 
-To create a non-minified, development build of the library, run the following command:
-
-```bash
-$ npm run build:dev
-```
-
-To create a minified, production distribution build of the library with a corresponding source map,
-run the following command:
+Run the following command to build the distribution files for the library:
 
 ```bash
 $ npm run build
 ```
+
+This will generate `firecrypt.js` (a non-minified, development build of the library with an inline
+source map) and `firecrypt.min.js` (a minified, production build of the library with a corresponding
+source map `firecrypt.min.js.map`) in the `dist/` directory.

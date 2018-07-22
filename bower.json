@@ -6,7 +6,7 @@
     "Piotr Kaminski <piotr@ideanest.com>"
   ],
   "description": "Transparent encryption for Firebase",
-  "main": "firecrypt.js",
+  "main": "dist/firecrypt.min.js",
   "keywords": [
     "firebase",
     "encryption"
