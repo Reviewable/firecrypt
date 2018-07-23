@@ -72,7 +72,7 @@ function encryptPath(path, def) {
 
 function encryptRef(ref, path) {
   var encryptedPath = encryptPath(path || refToPath(ref));
-  return encryptedPath.length ? ref.root().child(encryptedPath.join('/')) : ref.root();
+  return encryptedPath.length ? ref.root.child(encryptedPath.join('/')) : ref.root;
 }
 
 function decryptRef(ref) {
@@ -85,7 +85,7 @@ function decryptRef(ref) {
       changed = true;
     }
   }
-  return changed ? ref.root().child(path.join('/')) : ref;
+  return changed ? ref.root.child(path.join('/')) : ref;
 }
 
 function specForPath(path, def) {
@@ -150,7 +150,7 @@ function transformTree(value, def, transform) {
 }
 
 function refToPath(ref, encrypted) {
-  var root = ref.root();
+  var root = ref.root;
   if (ref === root) return [];
   var pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
   if (!encrypted && pathStr && pathStr.charAt(0) !== '.' &&

@@ -1,27 +1,34 @@
 const utils = require('./utils');
 const FireCryptSnapshot = require('./FireCryptSnapshot');
+const FireCryptReference = require('./FireCryptReference');
 
 class FireCryptQuery {
-  constructor(query, order, original) {
+  constructor(query, order, originalRef) {
     this._query = query;
     this._order = order || {};
-    this._original = original || query;
+    this._originalRef = originalRef || query;
+  }
+
+  get ref() {
+    // TODO: do I need to pass this to FireCryptReference constructor? If so, why am I getting that error?
+    // return new FireCryptReference(utils.decryptRef(this._query.ref));
+    return utils.decryptRef(this._query.ref);
   }
   
   on(eventType, callback, cancelCallback, context) {
     wrapQueryCallback(callback);
-    return this._original.on.call(
+    return this._originalRef.on.call(
       this._query, eventType, callback.firecryptCallback, cancelCallback, context);
   }
 
   off(eventType, callback, context) {
     if (callback && callback.firecryptCallback) callback = callback.firecryptCallback;
-    return this._original.off.call(this._query, eventType, callback, context);
+    return this._originalRef.off.call(this._query, eventType, callback, context);
   }
 
   once(eventType, successCallback, failureCallback, context) {
     wrapQueryCallback(successCallback);
-    return this._original.once.call(
+    return this._originalRef.once.call(
       this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback,
       context
     ).then((snap) => {
@@ -62,7 +69,7 @@ class FireCryptQuery {
     if (key !== undefined && this._order.keyEncrypted) {
       key = utils.encrypt(key, 'string', this._order.keyEncrypted);
     }
-    return new FireCryptQuery(this._original.equalTo.call(this._query, value, key), this._order);
+    return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order);
   }
 
   limitToFirst() {
@@ -77,12 +84,8 @@ class FireCryptQuery {
     return this._delegate('limit', arguments);
   }
 
-  ref() {
-    return utils.decryptRef(this._original.ref.call(this._query));
-  }
-
   _delegate(methodName, args) {
-    return new FireCryptQuery(this._original[methodName].apply(this._query, args), this._order);
+    return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order);
   }
 
   _checkCanSort(hasExtraKey) {
@@ -94,7 +97,7 @@ class FireCryptQuery {
   }
 
   _orderBy(methodName, by, childKey) {
-    var def = utils.specForPath(utils.refToPath(this.ref()));
+    var def = utils.specForPath(utils.refToPath(this.ref));
     var order = {by: by}
 
     var encryptedChildKey;
@@ -123,9 +126,9 @@ class FireCryptQuery {
     }
     if (childKey) {
       return new FireCryptQuery(
-        this._original[methodName].call(this._query, encryptedChildKey || childKey), order);
+        this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order);
     } else {
-      return new FireCryptQuery(this._original[methodName].call(this._query), order);
+      return new FireCryptQuery(this._originalRef[methodName].call(this._query), order);
     }
   }
 }

@@ -1,12 +1,14 @@
 const utils = require('./utils');
+const FireCryptReference = require('./FireCryptReference');
 
 class FireCryptSnapshot {
   constructor(snap) {
-    this._ref = utils.decryptRef(snap.ref());
+    this._ref = utils.decryptRef(snap.ref);
     this._path = utils.refToPath(this._ref);
     this._snap = snap;
 
     this._delegateSnapshot('exists');
+    this._delegateSnapshot('toJSON');
     this._delegateSnapshot('hasChildren');
     this._delegateSnapshot('numChildren');
     this._delegateSnapshot('getPriority');
@@ -16,6 +18,15 @@ class FireCryptSnapshot {
     this[methodName] = function() {
       return this._snap[methodName].apply(this._snap, arguments);
     };
+  }
+
+  get key() {
+    console.log('getting snapshot key');
+    return this._ref.key;
+  }
+  
+  get ref() {
+    return new FireCryptReference(this._ref.ref);
   }
 
   val() {
@@ -35,18 +46,6 @@ class FireCryptSnapshot {
   hasChild(childPath) {
     childPath = utils.encryptPath(childPath.split('/'), utils.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
-  }
-
-  key() {
-    return this._ref.key();
-  }
-  
-  name() {
-    return this._ref.name();
-  }
-  
-  ref() {
-    return this._ref;
   }
   
   exportVal() {
