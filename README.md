@@ -66,6 +66,6 @@ Run the following command to build the distribution files for the library:
 $ npm run build
 ```
 
-This will generate `firecrypt.js` (a non-minified, development build of the library with an inline
-source map) and `firecrypt.min.js` (a minified, production build of the library with a corresponding
-source map `firecrypt.min.js.map`) in the `dist/` directory.
+This will generate `firecrypt.js` (a non-minified build of the library for use in Node.js) and
+`firecrypt.min.js` (a minified build of the library for use in the browser) in the `dist/`
+directory.
