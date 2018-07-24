@@ -1,9 +1,7 @@
-'use strict';
-
 if (typeof require !== 'undefined') {
-  if (typeof Firebase === 'undefined') var Firebase = require('firebase');
-  if (typeof LRUCache === 'undefined') var LRUCache = require('lru-cache');
-  if (typeof CryptoJS === 'undefined') var CryptoJS = require('crypto-js/core');
+  if (typeof Firebase === 'undefined') global.Firebase = require('firebase');
+  if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
+  if (typeof CryptoJS === 'undefined') global.CryptoJS = require('crypto-js/core');
   require('crypto-js/enc-base64');
   require('cryptojs-extension/build_node/siv');
   try {
