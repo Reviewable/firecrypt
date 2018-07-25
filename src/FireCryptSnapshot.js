@@ -1,4 +1,4 @@
-const utils = require('./utils');
+import * as utils from './utils';
 
 class FireCryptSnapshot {
   constructor(snap) {
@@ -54,4 +54,4 @@ class FireCryptSnapshot {
   }
 }
 
-module.exports = FireCryptSnapshot;
+export default FireCryptSnapshot;
