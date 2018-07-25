@@ -1,6 +1,6 @@
-import * as utils from './utils';
+import * as crypto from './crypto';
 
-class FireCryptOnDisconnect {
+export default class FireCryptOnDisconnect {
   constructor(path, originalOnDisconnect) {
     this._path = path;
     this._originalOnDisconnect = originalOnDisconnect;
@@ -16,12 +16,10 @@ class FireCryptOnDisconnect {
     this[methodName] = function() {
       const args = Array.prototype.slice.call(arguments);
       if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = utils.transformValue(this._path, args[argIndex], utils.encrypt);
+        args[argIndex] = crypto.transformValue(this._path, args[argIndex], crypto.encrypt);
       }
 
       return this._originalOnDisconnect[methodName].apply(this._originalOnDisconnect, args);
     };
   }
 }
-
-export default FireCryptOnDisconnect;

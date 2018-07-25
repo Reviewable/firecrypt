@@ -1,7 +1,7 @@
-import * as utils from './utils';
+import * as crypto from './crypto';
 import FireCryptSnapshot from './FireCryptSnapshot';
 
-class FireCryptQuery {
+export default class FireCryptQuery {
   constructor(query, order, original) {
     this._query = query;
     this._order = order || {};
@@ -57,10 +57,10 @@ class FireCryptQuery {
 
   equalTo(value, key) {
     if (this._order[this._order.by + 'Encrypted']) {
-      value = utils.encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
+      value = crypto.encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
     }
     if (key !== undefined && this._order.keyEncrypted) {
-      key = utils.encrypt(key, 'string', this._order.keyEncrypted);
+      key = crypto.encrypt(key, 'string', this._order.keyEncrypted);
     }
     return new FireCryptQuery(this._original.equalTo.call(this._query, value, key), this._order);
   }
@@ -78,7 +78,7 @@ class FireCryptQuery {
   }
 
   ref() {
-    return utils.decryptRef(this._original.ref.call(this._query));
+    return crypto.decryptRef(this._original.ref.call(this._query));
   }
 
   _delegate(methodName, args) {
@@ -94,7 +94,7 @@ class FireCryptQuery {
   }
 
   _orderBy(methodName, by, childKey) {
-    var def = utils.specForPath(utils.refToPath(this.ref()));
+    var def = crypto.specForPath(crypto.refToPath(this.ref()));
     var order = {by: by}
 
     var encryptedChildKey;
@@ -108,11 +108,11 @@ class FireCryptQuery {
           if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
         }
         if (childKey) {
-          var childDef = utils.specForPath(childPath, subDef);
+          var childDef = crypto.specForPath(childPath, subDef);
           if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
             order.childEncrypted = childDef['.encrypt'].value;
           }
-          var encryptedChildKeyCandidate = utils.encryptPath(childPath, subDef).join('/');
+          var encryptedChildKeyCandidate = crypto.encryptPath(childPath, subDef).join('/');
           if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
             throw new Error(
               'Incompatible encryption specifications for orderByChild("' + childKey + '")');
@@ -138,5 +138,3 @@ function wrapQueryCallback(callback) {
   wrappedCallback.firecryptCallback = wrappedCallback;
   callback.firecryptCallback = wrappedCallback;
 }
-
-export default FireCryptQuery;
