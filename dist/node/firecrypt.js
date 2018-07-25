@@ -93,7 +93,7 @@ function transformValue(path, value, transform) {
 }
 function transformTree(value, def, transform) {
   if (!def) return value;
-  var type = getType(value);
+  var type = getType$1(value);
   var i;
   if (/^(string|number|boolean)$/.test(type)) {
     if (def['.encrypt'] && def['.encrypt'].value) {
@@ -218,7 +218,7 @@ function decrypt(value) {
   if (_decryptionCache) _decryptionCache.set(value, result);
   return result;
 }
-function getType(value) {
+function getType$1(value) {
   if (Array.isArray(value)) return 'array';
   var type = typeof value;
   if (type === 'object') {
@@ -288,6 +288,136 @@ class FireCryptSnapshot {
   exportVal() {
     return transformValue(this._path, this._snap.exportVal(), decrypt);
   }
+}
+
+class FireCryptQuery {
+  constructor(query, order, original) {
+    this._query = query;
+    this._order = order || {};
+    this._original = original || query;
+  }
+
+  on(eventType, callback, cancelCallback, context) {
+    wrapQueryCallback(callback);
+    return this._original.on.call(this._query, eventType, callback.firecryptCallback, cancelCallback, context);
+  }
+
+  off(eventType, callback, context) {
+    if (callback && callback.firecryptCallback) callback = callback.firecryptCallback;
+    return this._original.off.call(this._query, eventType, callback, context);
+  }
+
+  once(eventType, successCallback, failureCallback, context) {
+    wrapQueryCallback(successCallback);
+    return this._original.once.call(this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback, context).then(snap => {
+      return new FireCryptSnapshot(snap);
+    });
+  }
+
+  orderByChild(key) {
+    return this._orderBy('orderByChild', 'child', key);
+  }
+
+  orderByKey() {
+    return this._orderBy('orderByKey', 'key');
+  }
+
+  orderByValue() {
+    return this._orderBy('orderByValue', 'value');
+  }
+
+  orderByPriority() {
+    return this._orderBy('orderByPriority', 'priority');
+  }
+
+  startAt(value, key) {
+    this._checkCanSort(key !== undefined);
+    return this._delegate('startAt', arguments);
+  }
+
+  endAt(value, key) {
+    this._checkCanSort(key !== undefined);
+    return this._delegate('endAt', arguments);
+  }
+
+  equalTo(value, key) {
+    if (this._order[this._order.by + 'Encrypted']) {
+      value = encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
+    }
+    if (key !== undefined && this._order.keyEncrypted) {
+      key = encrypt(key, 'string', this._order.keyEncrypted);
+    }
+    return new FireCryptQuery(this._original.equalTo.call(this._query, value, key), this._order);
+  }
+
+  limitToFirst() {
+    return this._delegate('limitToFirst', arguments);
+  }
+
+  limitToLast() {
+    return this._delegate('limitToLast', arguments);
+  }
+
+  limit() {
+    return this._delegate('limit', arguments);
+  }
+
+  ref() {
+    return decryptRef(this._original.ref.call(this._query));
+  }
+
+  _delegate(methodName, args) {
+    return new FireCryptQuery(this._original[methodName].apply(this._query, args), this._order);
+  }
+
+  _checkCanSort(hasExtraKey) {
+    if (this._order.by === 'key' ? this._order.keyEncrypted : this._order.valueEncrypted || hasExtraKey && this._order.keyEncrypted) {
+      throw new Error('Encrypted items cannot be ordered');
+    }
+  }
+
+  _orderBy(methodName, by, childKey) {
+    var def = specForPath(refToPath(this.ref()));
+    var order = { by: by };
+
+    var encryptedChildKey;
+    if (def) {
+      var childPath = childKey && childKey.split('/');
+      for (var subKey in def) {
+        if (!def.hasOwnProperty(subKey)) continue;
+        var subDef = def[subKey];
+        if (subDef['.encrypt']) {
+          if (subDef['.encrypt'].key) order.keyEncrypted = subDef['.encrypt'].key;
+          if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
+        }
+        if (childKey) {
+          var childDef = specForPath(childPath, subDef);
+          if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
+            order.childEncrypted = childDef['.encrypt'].value;
+          }
+          var encryptedChildKeyCandidate = encryptPath(childPath, subDef).join('/');
+          if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
+            throw new Error('Incompatible encryption specifications for orderByChild("' + childKey + '")');
+          }
+          encryptedChildKey = encryptedChildKeyCandidate;
+        }
+      }
+    }
+    if (childKey) {
+      return new FireCryptQuery(this._original[methodName].call(this._query, encryptedChildKey || childKey), order);
+    } else {
+      return new FireCryptQuery(this._original[methodName].call(this._query), order);
+    }
+  }
+}
+
+function wrapQueryCallback(callback) {
+  if (!callback || callback.firecryptCallback) return;
+  var wrappedCallback = function (snap, previousChildKey) {
+    return callback.call(this, new FireCryptSnapshot(snap), previousChildKey);
+  };
+  wrappedCallback.firecryptCallback = wrappedCallback;
+  callback.firecryptCallback = wrappedCallback;
 }
 
 class FireCryptOnDisconnect {
@@ -390,107 +520,6 @@ function setupAesSiv(key, checkValue) {
   return encryptString$1(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));
 }
 
-function Query(query, order, original) {
-  this._query = query;
-  this._order = order || {};
-  this._original = original || query;
-}
-Query.prototype.on = function (eventType, callback, cancelCallback, context) {
-  wrapQueryCallback(callback);
-  return this._original.on.call(this._query, eventType, callback.firecryptCallback, cancelCallback, context);
-};
-Query.prototype.off = function (eventType, callback, context) {
-  if (callback && callback.firecryptCallback) callback = callback.firecryptCallback;
-  return this._original.off.call(this._query, eventType, callback, context);
-};
-Query.prototype.once = function (eventType, successCallback, failureCallback, context) {
-  wrapQueryCallback(successCallback);
-  return this._original.once.call(this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback, context).then(function (snap) {
-    return new FireCryptSnapshot(snap);
-  });
-};
-Query.prototype.orderByChild = function (key) {
-  return this._orderBy('orderByChild', 'child', key);
-};
-Query.prototype.orderByKey = function () {
-  return this._orderBy('orderByKey', 'key');
-};
-Query.prototype.orderByValue = function () {
-  return this._orderBy('orderByValue', 'value');
-};
-Query.prototype.orderByPriority = function () {
-  return this._orderBy('orderByPriority', 'priority');
-};
-Query.prototype.startAt = function (value, key) {
-  this._checkCanSort(key !== undefined);
-  return this._delegate('startAt', arguments);
-};
-Query.prototype.endAt = function (value, key) {
-  this._checkCanSort(key !== undefined);
-  return this._delegate('endAt', arguments);
-};
-Query.prototype.equalTo = function (value, key) {
-  if (this._order[this._order.by + 'Encrypted']) {
-    value = encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
-  }
-  if (key !== undefined && this._order.keyEncrypted) {
-    key = encrypt(key, 'string', this._order.keyEncrypted);
-  }
-  return new Query(this._original.equalTo.call(this._query, value, key), this._order);
-};
-Query.prototype.limitToFirst = function () {
-  return this._delegate('limitToFirst', arguments);
-};
-Query.prototype.limitToLast = function () {
-  return this._delegate('limitToLast', arguments);
-};
-Query.prototype.limit = function () {
-  return this._delegate('limit', arguments);
-};
-Query.prototype.ref = function () {
-  return decryptRef(this._original.ref.call(this._query));
-};
-Query.prototype._delegate = function (methodName, args) {
-  return new Query(this._original[methodName].apply(this._query, args), this._order);
-};
-Query.prototype._checkCanSort = function (hasExtraKey) {
-  if (this._order.by === 'key' ? this._order.keyEncrypted : this._order.valueEncrypted || hasExtraKey && this._order.keyEncrypted) {
-    throw new Error('Encrypted items cannot be ordered');
-  }
-};
-Query.prototype._orderBy = function (methodName, by, childKey) {
-  var def = specForPath(refToPath(this.ref()));
-  var order = { by: by };
-  var encryptedChildKey;
-  if (def) {
-    var childPath = childKey && childKey.split('/');
-    for (var subKey in def) {
-      if (!def.hasOwnProperty(subKey)) continue;
-      var subDef = def[subKey];
-      if (subDef['.encrypt']) {
-        if (subDef['.encrypt'].key) order.keyEncrypted = subDef['.encrypt'].key;
-        if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
-      }
-      if (childKey) {
-        var childDef = specForPath(childPath, subDef);
-        if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
-          order.childEncrypted = childDef['.encrypt'].value;
-        }
-        var encryptedChildKeyCandidate = encryptPath(childPath, subDef).join('/');
-        if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
-          throw new Error('Incompatible encryption specifications for orderByChild("' + childKey + '")');
-        }
-        encryptedChildKey = encryptedChildKeyCandidate;
-      }
-    }
-  }
-  if (childKey) {
-    return new Query(this._original[methodName].call(this._query, encryptedChildKey || childKey), order);
-  } else {
-    return new Query(this._original[methodName].call(this._query), order);
-  }
-};
-
 function wrapFirebase() {
   if (firebaseWrapped) return;
   interceptWrite('set', 0);
@@ -584,17 +613,8 @@ function interceptOnDisconnect() {
 function interceptQuery(methodName) {
   originalQueryFbp[methodName] = fbp[methodName];
   fbp[methodName] = function () {
-    var query = new Query(encryptRef(this), {}, originalQueryFbp);
+    var query = new FireCryptQuery(encryptRef(this), {}, originalQueryFbp);
     return query[methodName].apply(query, arguments);
   };
-}
-
-function wrapQueryCallback(callback) {
-  if (!callback || callback.firecryptCallback) return;
-  var wrappedCallback = function (snap, previousChildKey) {
-    return callback.call(this, new FireCryptSnapshot(snap), previousChildKey);
-  };
-  wrappedCallback.firecryptCallback = wrappedCallback;
-  callback.firecryptCallback = wrappedCallback;
 }
 //# sourceMappingURL=firecrypt.js.map
