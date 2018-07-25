@@ -1,5 +1,5 @@
-const utils = require('./utils');
-const FireCryptSnapshot = require('./FireCryptSnapshot');
+import * as utils from './utils';
+import FireCryptSnapshot from './FireCryptSnapshot';
 
 class FireCryptQuery {
   constructor(query, order, original) {
@@ -139,4 +139,4 @@ function wrapQueryCallback(callback) {
   callback.firecryptCallback = wrappedCallback;
 }
 
-module.exports = FireCryptQuery;
+export default FireCryptQuery;
