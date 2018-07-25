@@ -24,6 +24,7 @@ var firebaseWrapped = false;
 var encryptString, decryptString;
 
 import * as utils from './utils';
+import FireCryptOnDisconnect from './FireCryptOnDisconnect';
 
 Firebase.initializeEncryption = function(options, specification) {
   var result;
@@ -222,16 +223,6 @@ Snapshot.prototype.exportVal = function() {
   return utils.transformValue(this._path, this._snap.exportVal(), utils.decrypt);
 };
 
-function OnDisconnect(path, originalOnDisconnect) {
-  this._path = path;
-  this._originalOnDisconnect = originalOnDisconnect;
-}
-interceptOnDisconnectWrite('set', 0);
-interceptOnDisconnectWrite('update', 0);
-interceptOnDisconnectWrite('remove');
-interceptOnDisconnectWrite('setWithPriority', 0);
-interceptOnDisconnectWrite('cancel');
-
 
 function wrapFirebase() {
   if (firebaseWrapped) return;
@@ -317,18 +308,7 @@ function interceptOnDisconnect() {
   var originalMethod = fbp.onDisconnect;
   fbp.onDisconnect = function() {
     var path = utils.refToPath(this);
-    return new OnDisconnect(path, originalMethod.call(utils.encryptRef(this, path)));
-  };
-}
-
-function interceptOnDisconnectWrite(methodName, argIndex) {
-  OnDisconnect.prototype[methodName] = function() {
-    var args = Array.prototype.slice.call(arguments);
-    if (argIndex >= 0 && argIndex < args.length) {
-      args[argIndex] = utils.transformValue(this._path, args[argIndex], utils.encrypt);
-    }
-    console.log('ARGS:', args);
-    return this._originalOnDisconnect[methodName].apply(this._originalOnDisconnect, args);
+    return new FireCryptOnDisconnect(path, originalMethod.call(utils.encryptRef(this, path)));
   };
 }
 

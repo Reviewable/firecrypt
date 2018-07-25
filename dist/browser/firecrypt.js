@@ -237,6 +237,30 @@
     return regex;
   }
 
+  class FireCryptOnDisconnect {
+    constructor(path, originalOnDisconnect) {
+      this._path = path;
+      this._originalOnDisconnect = originalOnDisconnect;
+
+      this._interceptOnDisconnectWrite('set', 0);
+      this._interceptOnDisconnectWrite('update', 0);
+      this._interceptOnDisconnectWrite('remove');
+      this._interceptOnDisconnectWrite('setWithPriority', 0);
+      this._interceptOnDisconnectWrite('cancel');
+    }
+
+    _interceptOnDisconnectWrite(methodName, argIndex) {
+      this[methodName] = function () {
+        const args = Array.prototype.slice.call(arguments);
+        if (argIndex >= 0 && argIndex < args.length) {
+          args[argIndex] = transformValue(this._path, args[argIndex], encrypt);
+        }
+
+        return this._originalOnDisconnect[methodName].apply(this._originalOnDisconnect, args);
+      };
+    }
+  }
+
   if (typeof require !== 'undefined') {
     if (typeof Firebase === 'undefined') global.Firebase = require('firebase');
     if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
@@ -451,16 +475,6 @@
     return transformValue(this._path, this._snap.exportVal(), decrypt);
   };
 
-  function OnDisconnect(path, originalOnDisconnect) {
-    this._path = path;
-    this._originalOnDisconnect = originalOnDisconnect;
-  }
-  interceptOnDisconnectWrite('set', 0);
-  interceptOnDisconnectWrite('update', 0);
-  interceptOnDisconnectWrite('remove');
-  interceptOnDisconnectWrite('setWithPriority', 0);
-  interceptOnDisconnectWrite('cancel');
-
   function wrapFirebase() {
     if (firebaseWrapped) return;
     interceptWrite('set', 0);
@@ -547,18 +561,7 @@
     var originalMethod = fbp.onDisconnect;
     fbp.onDisconnect = function () {
       var path = refToPath(this);
-      return new OnDisconnect(path, originalMethod.call(encryptRef(this, path)));
-    };
-  }
-
-  function interceptOnDisconnectWrite(methodName, argIndex) {
-    OnDisconnect.prototype[methodName] = function () {
-      var args = Array.prototype.slice.call(arguments);
-      if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = transformValue(this._path, args[argIndex], encrypt);
-      }
-      console.log('ARGS:', args);
-      return this._originalOnDisconnect[methodName].apply(this._originalOnDisconnect, args);
+      return new FireCryptOnDisconnect(path, originalMethod.call(encryptRef(this, path)));
     };
   }
 
