@@ -2,9 +2,10 @@
   "name": "firecrypt",
   "version": "0.3.4",
   "description": "Transparent encryption for Firebase",
-  "main": "index.js",
+  "main": "dist/node/firecrypt.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "rollup -c rollup.config.js"
   },
   "repository": {
     "type": "git",
@@ -28,5 +29,11 @@
     "cryptojs-extension": "pkaminski/cryptojs-extension",
     "firebase": "^2.4.2",
     "serialized-lru-cache": "^3.1.0"
+  },
+  "devDependencies": {
+    "babel-core": "^6.26.3",
+    "rollup": "^0.63.4",
+    "rollup-plugin-babel": "^3.0.7",
+    "rollup-plugin-minify-es": "^1.1.1"
   }
 }
