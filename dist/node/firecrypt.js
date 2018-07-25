@@ -236,6 +236,60 @@ function compilePattern(pattern) {
   return regex;
 }
 
+class FireCryptSnapshot {
+  constructor(snap) {
+    this._ref = decryptRef(snap.ref());
+    this._path = refToPath(this._ref);
+    this._snap = snap;
+
+    this._delegateSnapshot('exists');
+    this._delegateSnapshot('hasChildren');
+    this._delegateSnapshot('numChildren');
+    this._delegateSnapshot('getPriority');
+  }
+
+  _delegateSnapshot(methodName) {
+    this[methodName] = function () {
+      return this._snap[methodName].apply(this._snap, arguments);
+    };
+  }
+
+  val() {
+    return transformValue(this._path, this._snap.val(), decrypt);
+  }
+
+  child(childPath) {
+    return new FireCryptSnapshot(this._snap.child(childPath));
+  }
+
+  forEach(action) {
+    return this._snap.forEach(function (childSnap) {
+      return action(new FireCryptSnapshot(childSnap));
+    });
+  }
+
+  hasChild(childPath) {
+    childPath = encryptPath(childPath.split('/'), specForPath(this._path)).join('/');
+    return this._snap.hasChild(childPath);
+  }
+
+  key() {
+    return this._ref.key();
+  }
+
+  name() {
+    return this._ref.name();
+  }
+
+  ref() {
+    return this._ref;
+  }
+
+  exportVal() {
+    return transformValue(this._path, this._snap.exportVal(), decrypt);
+  }
+}
+
 class FireCryptOnDisconnect {
   constructor(path, originalOnDisconnect) {
     this._path = path;
@@ -352,7 +406,7 @@ Query.prototype.off = function (eventType, callback, context) {
 Query.prototype.once = function (eventType, successCallback, failureCallback, context) {
   wrapQueryCallback(successCallback);
   return this._original.once.call(this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback, context).then(function (snap) {
-    return new Snapshot(snap);
+    return new FireCryptSnapshot(snap);
   });
 };
 Query.prototype.orderByChild = function (key) {
@@ -437,43 +491,6 @@ Query.prototype._orderBy = function (methodName, by, childKey) {
   }
 };
 
-function Snapshot(snap) {
-  this._ref = decryptRef(snap.ref());
-  this._path = refToPath(this._ref);
-  this._snap = snap;
-}
-delegateSnapshot('exists');
-delegateSnapshot('hasChildren');
-delegateSnapshot('numChildren');
-delegateSnapshot('getPriority');
-Snapshot.prototype.val = function () {
-  return transformValue(this._path, this._snap.val(), decrypt);
-};
-Snapshot.prototype.child = function (childPath) {
-  return new Snapshot(this._snap.child(childPath));
-};
-Snapshot.prototype.forEach = function (action) {
-  return this._snap.forEach(function (childSnap) {
-    return action(new Snapshot(childSnap));
-  });
-};
-Snapshot.prototype.hasChild = function (childPath) {
-  childPath = encryptPath(childPath.split('/'), specForPath(this._path)).join('/');
-  return this._snap.hasChild(childPath);
-};
-Snapshot.prototype.key = function () {
-  return this._ref.key();
-};
-Snapshot.prototype.name = function () {
-  return this._ref.name();
-};
-Snapshot.prototype.ref = function () {
-  return this._ref;
-};
-Snapshot.prototype.exportVal = function () {
-  return transformValue(this._path, this._snap.exportVal(), decrypt);
-};
-
 function wrapFirebase() {
   if (firebaseWrapped) return;
   interceptWrite('set', 0);
@@ -546,11 +563,11 @@ function interceptTransaction() {
     if (args.length > 1) {
       var originalOnComplete = args[1];
       args[1] = originalOnComplete && function (error, committed, snapshot) {
-        return originalOnComplete(error, committed, snapshot && new Snapshot(snapshot));
+        return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot));
       };
     }
     return originalMethod.apply(self, args).then(function (result) {
-      result.snapshot = result.snapshot && new Snapshot(result.snapshot);
+      result.snapshot = result.snapshot && new FireCryptSnapshot(result.snapshot);
       return result;
     });
   };
@@ -575,15 +592,9 @@ function interceptQuery(methodName) {
 function wrapQueryCallback(callback) {
   if (!callback || callback.firecryptCallback) return;
   var wrappedCallback = function (snap, previousChildKey) {
-    return callback.call(this, new Snapshot(snap), previousChildKey);
+    return callback.call(this, new FireCryptSnapshot(snap), previousChildKey);
   };
   wrappedCallback.firecryptCallback = wrappedCallback;
   callback.firecryptCallback = wrappedCallback;
-}
-
-function delegateSnapshot(methodName) {
-  Snapshot.prototype[methodName] = function () {
-    return this._snap[methodName].apply(this._snap, arguments);
-  };
 }
 //# sourceMappingURL=firecrypt.js.map

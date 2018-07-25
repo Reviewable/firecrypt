@@ -24,6 +24,7 @@ var firebaseWrapped = false;
 var encryptString, decryptString;
 
 import * as utils from './utils';
+import FireCryptSnapshot from './FireCryptSnapshot';
 import FireCryptOnDisconnect from './FireCryptOnDisconnect';
 
 Firebase.initializeEncryption = function(options, specification) {
@@ -96,7 +97,7 @@ Query.prototype.once = function(eventType, successCallback, failureCallback, con
     this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback,
     context
   ).then(function(snap) {
-    return new Snapshot(snap);
+    return new FireCryptSnapshot(snap);
   });
 };
 Query.prototype.orderByChild = function(key) {
@@ -186,44 +187,6 @@ Query.prototype._orderBy = function(methodName, by, childKey) {
 };
 
 
-function Snapshot(snap) {
-  this._ref = utils.decryptRef(snap.ref());
-  this._path = utils.refToPath(this._ref);
-  this._snap = snap;
-}
-delegateSnapshot('exists');
-delegateSnapshot('hasChildren');
-delegateSnapshot('numChildren');
-delegateSnapshot('getPriority');
-Snapshot.prototype.val = function() {
-  return utils.transformValue(this._path, this._snap.val(), utils.decrypt);
-};
-Snapshot.prototype.child = function(childPath) {
-  return new Snapshot(this._snap.child(childPath));
-};
-Snapshot.prototype.forEach = function(action) {
-  return this._snap.forEach(function(childSnap) {
-    return action(new Snapshot(childSnap));
-  });
-};
-Snapshot.prototype.hasChild = function(childPath) {
-  childPath = utils.encryptPath(childPath.split('/'), utils.specForPath(this._path)).join('/');
-  return this._snap.hasChild(childPath);
-};
-Snapshot.prototype.key = function() {
-  return this._ref.key();
-};
-Snapshot.prototype.name = function() {
-  return this._ref.name();
-};
-Snapshot.prototype.ref = function() {
-  return this._ref;
-};
-Snapshot.prototype.exportVal = function() {
-  return utils.transformValue(this._path, this._snap.exportVal(), utils.decrypt);
-};
-
-
 function wrapFirebase() {
   if (firebaseWrapped) return;
   interceptWrite('set', 0);
@@ -294,11 +257,11 @@ function interceptTransaction() {
     if (args.length > 1) {
       var originalOnComplete = args[1];
       args[1] = originalOnComplete && function(error, committed, snapshot) {
-        return originalOnComplete(error, committed, snapshot && new Snapshot(snapshot));
+        return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot));
       };
     }
     return originalMethod.apply(self, args).then(function(result) {
-      result.snapshot = result.snapshot && new Snapshot(result.snapshot);
+      result.snapshot = result.snapshot && new FireCryptSnapshot(result.snapshot);
       return result;
     });
   };
@@ -323,14 +286,8 @@ function interceptQuery(methodName) {
 function wrapQueryCallback(callback) {
   if (!callback || callback.firecryptCallback) return;
   var wrappedCallback = function(snap, previousChildKey) {
-    return callback.call(this, new Snapshot(snap), previousChildKey);
+    return callback.call(this, new FireCryptSnapshot(snap), previousChildKey);
   };
   wrappedCallback.firecryptCallback = wrappedCallback;
   callback.firecryptCallback = wrappedCallback;
-}
-
-function delegateSnapshot(methodName) {
-  Snapshot.prototype[methodName] = function() {
-    return this._snap[methodName].apply(this._snap, arguments);
-  };
 }
