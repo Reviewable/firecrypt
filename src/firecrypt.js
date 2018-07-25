@@ -23,7 +23,7 @@ var originalQueryFbp = {};
 var firebaseWrapped = false;
 var encryptString, decryptString;
 
-import * as utils from './utils';
+import * as crypto from './crypto';
 import FireCryptQuery from './FireCryptQuery';
 import FireCryptSnapshot from './FireCryptSnapshot';
 import FireCryptOnDisconnect from './FireCryptOnDisconnect';
@@ -33,13 +33,13 @@ Firebase.initializeEncryption = function(options, specification) {
   options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
   options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
   options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
-  encryptString = decryptString = utils.throwNotSetUpError;
+  encryptString = decryptString = crypto.throwNotSetUpError;
   if (typeof LRUCache === 'function') {
-    utils.setEncryptionCache(new LRUCache({
-      max: options.encryptionCacheSize, length: utils.computeCacheItemSize
+    crypto.setEncryptionCache(new LRUCache({
+      max: options.encryptionCacheSize, length: crypto.computeCacheItemSize
     }));
-    utils.setDecryptionCache(new LRUCache({
-      max: options.decryptionCacheSize, length: utils.computeCacheItemSize
+    crypto.setDecryptionCache(new LRUCache({
+      max: options.decryptionCacheSize, length: crypto.computeCacheItemSize
     }));
   }
   switch (options.algorithm) {
@@ -55,7 +55,7 @@ Firebase.initializeEncryption = function(options, specification) {
     default:
       throw new Error('Unknown encryption algorithm "' + options.algorithm + '".');
   }
-  utils.setSpec(specification);
+  crypto.setSpec(specification);
   wrapFirebase();
   return result;
 };
@@ -98,11 +98,11 @@ function wrapFirebase() {
 function interceptWrite(methodName, argIndex) {
   var originalMethod = fbp[methodName];
   fbp[methodName] = function() {
-    var path = utils.refToPath(this);
-    var self = utils.encryptRef(this, path);
+    var path = crypto.refToPath(this);
+    var self = crypto.encryptRef(this, path);
     var args = Array.prototype.slice.call(arguments);
     if (argIndex >= 0 && argIndex < args.length) {
-      args[argIndex] = utils.transformValue(path, args[argIndex], utils.encrypt);
+      args[argIndex] = crypto.transformValue(path, args[argIndex], crypto.encrypt);
     }
     return originalMethod.apply(self, args);
   };
@@ -114,7 +114,7 @@ function interceptPush() {
   var originalMethod = fbp.push;
   fbp.push = function() {
     var ref = originalMethod.apply(this, arguments);
-    var decryptedRef = utils.decryptRef(ref);
+    var decryptedRef = crypto.decryptRef(ref);
     decryptedRef.then = ref.then;
     decryptedRef.catch = ref.catch;
     if (ref.finally) decryptedRef.finally = ref.finally;
@@ -125,9 +125,9 @@ function interceptPush() {
 function interceptChildrenKeys() {
   var originalMethod = fbp.childrenKeys;
   fbp.childrenKeys = function() {
-    return originalMethod.apply(utils.encryptRef(this), arguments).then(function(keys) {
+    return originalMethod.apply(crypto.encryptRef(this), arguments).then(function(keys) {
       if (!keys.some(function(key) {return /\x91/.test(key);})) return keys;
-      return keys.map(utils.decrypt);
+      return keys.map(crypto.decrypt);
     });
   };
 }
@@ -135,14 +135,14 @@ function interceptChildrenKeys() {
 function interceptTransaction() {
   var originalMethod = fbp.transaction;
   fbp.transaction = function() {
-    var path = utils.refToPath(this);
-    var self = utils.encryptRef(this, path);
+    var path = crypto.refToPath(this);
+    var self = crypto.encryptRef(this, path);
     var args = Array.prototype.slice.call(arguments);
     var originalCompute = args[0];
     args[0] = originalCompute && function(value) {
-      value = utils.transformValue(path, value, utils.decrypt);
+      value = crypto.transformValue(path, value, crypto.decrypt);
       value = originalCompute(value);
-      value = utils.transformValue(path, value, utils.encrypt);
+      value = crypto.transformValue(path, value, crypto.encrypt);
       return value;
     };
     if (args.length > 1) {
@@ -161,15 +161,15 @@ function interceptTransaction() {
 function interceptOnDisconnect() {
   var originalMethod = fbp.onDisconnect;
   fbp.onDisconnect = function() {
-    var path = utils.refToPath(this);
-    return new FireCryptOnDisconnect(path, originalMethod.call(utils.encryptRef(this, path)));
+    var path = crypto.refToPath(this);
+    return new FireCryptOnDisconnect(path, originalMethod.call(crypto.encryptRef(this, path)));
   };
 }
 
 function interceptQuery(methodName) {
   originalQueryFbp[methodName] = fbp[methodName];
   fbp[methodName] = function() {
-    var query = new FireCryptQuery(utils.encryptRef(this), {}, originalQueryFbp);
+    var query = new FireCryptQuery(crypto.encryptRef(this), {}, originalQueryFbp);
     return query[methodName].apply(query, arguments);
   };
 }
