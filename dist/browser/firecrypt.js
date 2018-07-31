@@ -525,8 +525,8 @@ var FireCrypt = (function () {
 
     get ref() {
       // TODO: do I need to pass this to FireCryptReference constructor? If so, why am I getting that error?
-      // return new FireCryptReference(crypto.decryptRef(this._query.ref));
-      return decryptRef(this._query.ref);
+      return new FireCryptReference(decryptRef(this._query.ref));
+      // return crypto.decryptRef(this._query.ref);
     }
 
     on(eventType, callback, cancelCallback, context) {
