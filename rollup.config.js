@@ -10,11 +10,9 @@ const sharedConfig = {
     }),
   ],
   external: [
-    'firebase',
     'lru-cache',
     'crypto-js',
     'cryptojs-extension',
-    'firebase-childrenkeys',
   ],
 };
 

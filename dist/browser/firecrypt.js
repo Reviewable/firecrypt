@@ -524,9 +524,7 @@ var FireCrypt = (function () {
     }
 
     get ref() {
-      // TODO: do I need to pass this to FireCryptReference constructor? If so, why am I getting that error?
       return new FireCryptReference(decryptRef(this._query.ref));
-      // return crypto.decryptRef(this._query.ref);
     }
 
     on(eventType, callback, cancelCallback, context) {
@@ -653,16 +651,10 @@ var FireCrypt = (function () {
   }
 
   if (typeof require !== 'undefined') {
-    if (typeof Firebase === 'undefined') global.Firebase = require('firebase');
     if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
     if (typeof CryptoJS === 'undefined') global.CryptoJS = require('crypto-js/core');
     require('crypto-js/enc-base64');
     require('cryptojs-extension/build_node/siv');
-    try {
-      require('firebase-childrenkeys');
-    } catch (e) {
-      // ignore, not installed
-    }
   }
 
   CryptoJS.enc.Base64UrlSafe = {
