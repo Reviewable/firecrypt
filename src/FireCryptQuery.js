@@ -12,7 +12,7 @@ export default class FireCryptQuery {
   get ref() {
     return new FireCryptReference(crypto.decryptRef(this._query.ref));
   }
-  
+
   on(eventType, callback, cancelCallback, context) {
     wrapQueryCallback(callback);
     return this._originalRef.on.call(
@@ -80,10 +80,6 @@ export default class FireCryptQuery {
 
   limit() {
     return this._delegate('limit', arguments);
-  }
-
-  ref() {
-    return crypto.decryptRef(this._originalRef.ref.call(this._query));
   }
 
   _delegate(methodName, args) {

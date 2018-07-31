@@ -45,7 +45,6 @@ export default class FireCryptReference {
    * @return {string|null} The last part this reference's path.
    */
   get key() {
-    console.log('GETTING KEY:', this._ref.key);
     return this._ref.key;
   }
 

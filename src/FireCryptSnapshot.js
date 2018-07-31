@@ -21,7 +21,6 @@ export default class FireCryptSnapshot {
   }
 
   get key() {
-    console.log('getting snapshot key');
     return this._ref.key;
   }
 
