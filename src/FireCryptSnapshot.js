@@ -1,7 +1,7 @@
-const utils = require('./utils');
-const FireCryptReference = require('./FireCryptReference');
+import * as utils from './utils';
+import FireCryptReference from './FireCryptReference';
 
-class FireCryptSnapshot {
+export default class FireCryptSnapshot {
   constructor(snap) {
     this._ref = utils.decryptRef(snap.ref);
     this._path = utils.refToPath(this._ref);
@@ -24,7 +24,7 @@ class FireCryptSnapshot {
     console.log('getting snapshot key');
     return this._ref.key;
   }
-  
+
   get ref() {
     return new FireCryptReference(this._ref.ref);
   }
@@ -47,10 +47,8 @@ class FireCryptSnapshot {
     childPath = utils.encryptPath(childPath.split('/'), utils.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   }
-  
+
   exportVal() {
     return utils.transformValue(this._path, this._snap.exportVal(), utils.decrypt);
   }
 }
-
-module.exports = FireCryptSnapshot;

@@ -1,9 +1,9 @@
-const utils = require('./utils');
-const FireCryptQuery = require('./FireCryptQuery');
-const FireCryptSnapshot = require('./FireCryptSnapshot');
-const FireCryptOnDisconnect = require('./FireCryptOnDisconnect');
+import * as utils from './utils';
+import FireCryptQuery from './FireCryptQuery';
+import FireCryptSnapshot from './FireCryptSnapshot';
+import FireCryptOnDisconnect from './FireCryptOnDisconnect';
 
-class FireCryptReference {
+export default class FireCryptReference {
   constructor(ref) {
     this._ref = ref;
 
@@ -206,5 +206,3 @@ class FireCryptReference {
     };
   }
 }
-
-module.exports = FireCryptReference;

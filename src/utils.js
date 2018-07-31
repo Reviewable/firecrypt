@@ -2,19 +2,19 @@ let _spec;
 let _encryptionCache;
 let _decryptionCache;
 
-function setSpec(spec) {
+export function setSpec(spec) {
   _spec = cleanSpecification(spec);
-}
+};
 
-function setEncryptionCache(cache) {
+export function setEncryptionCache(cache) {
   _encryptionCache = cache;
-}
+};
 
-function setDecryptionCache(cache) {
+export function setDecryptionCache(cache) {
   _decryptionCache = cache;
-}
+};
 
-function cleanSpecification(def, path) {
+export function cleanSpecification(def, path) {
   var keys = Object.keys(def);
   for (var i = 0; i < keys.length; i++) {
     var key = keys[i];
@@ -45,19 +45,19 @@ function cleanSpecification(def, path) {
     }
   }
   return def;
-}
+};
 
-function throwNotSetUpError() {
+export function throwNotSetUpError() {
   var e = new Error('Encryption not set up');
   e.firecrypt = 'NO_KEY';
   throw e;
-}
+};
 
-function computeCacheItemSize(value, key) {
+export function computeCacheItemSize(value, key) {
   return key.length + (typeof value === 'string' ? value.length : 4);
-}
+};
 
-function encryptPath(path, def) {
+export function encryptPath(path, def) {
   def = def || _spec.rules;
   path = path.slice();
   for (var i = 0; i < path.length; i++) {
@@ -68,14 +68,14 @@ function encryptPath(path, def) {
     }
   }
   return path;
-}
+};
 
-function encryptRef(ref, path) {
+export function encryptRef(ref, path) {
   var encryptedPath = encryptPath(path || refToPath(ref));
   return encryptedPath.length ? ref.root.child(encryptedPath.join('/')) : ref.root;
-}
+};
 
-function decryptRef(ref) {
+export function decryptRef(ref) {
   var path = refToPath(ref, true);
   var changed = false;
   for (var i = 0; i < path.length; i++) {
@@ -86,21 +86,21 @@ function decryptRef(ref) {
     }
   }
   return changed ? ref.root.child(path.join('/')) : ref;
-}
+};
 
-function specForPath(path, def) {
+export function specForPath(path, def) {
   def = def || _spec.rules;
   for (var i = 0; def && i < path.length; i++) {
     def = def[path[i]] || def.$;
   }
   return def;
-}
+};
 
-function transformValue(path, value, transform) {
+export function transformValue(path, value, transform) {
   return transformTree(value, specForPath(path), transform);
-}
+};
 
-function transformTree(value, def, transform) {
+export function transformTree(value, def, transform) {
   if (!def) return value;
   var type = getType(value);
   var i;
@@ -147,9 +147,9 @@ function transformTree(value, def, transform) {
     for (i = 0; i < value.length; i++) value[i] = transformTree(value[i], def.$, transform);
   }
   return value;
-}
+};
 
-function refToPath(ref, encrypted) {
+export function refToPath(ref, encrypted) {
   var root = ref.root;
   if (ref === root) return [];
   var pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
@@ -158,9 +158,9 @@ function refToPath(ref, encrypted) {
     throw new Error('Path contains invalid characters: ' + pathStr);
   }
   return pathStr.split('/');
-}
+};
 
-function encrypt(value, type, pattern) {
+export function encrypt(value, type, pattern) {
   var cacheKey;
   if (_encryptionCache) {
     cacheKey = type.charAt(0) + pattern + '\x91' + value;
@@ -187,18 +187,18 @@ function encrypt(value, type, pattern) {
   }
   if (_encryptionCache) _encryptionCache.set(cacheKey, result);
   return result;
-}
+};
 
-function encryptValue(value, type) {
+export function encryptValue(value, type) {
   if (!/^(string|number|boolean)$/.test(type)) throw new Error('Can\'t encrypt a ' + type);
   switch (type) {
     case 'number': value = '' + value; break;
     case 'boolean': value = value ? 't' : 'f'; break;
   }
   return '\x91' + type.charAt(0).toUpperCase() + encryptString(value) + '\x92';
-}
+};
 
-function decrypt(value) {
+export function decrypt(value) {
   if (_decryptionCache && _decryptionCache.has(value)) return _decryptionCache.get(value);
   if (!/\x91/.test(value)) return value;
   var result;
@@ -230,9 +230,9 @@ function decrypt(value) {
   }
   if (_decryptionCache) _decryptionCache.set(value, result);
   return result;
-}
+};
 
-function getType(value) {
+export function getType(value) {
   if (Array.isArray(value)) return 'array';
   var type = typeof value;
   if (type === 'object') {
@@ -241,10 +241,10 @@ function getType(value) {
     else if (value instanceof Boolean) type = 'boolean';
   }
   return type;
-}
+};
 
 var patternRegexes = {};
-function compilePattern(pattern) {
+export function compilePattern(pattern) {
   var regex = patternRegexes[pattern];
   if (!regex) {
     regex = patternRegexes[pattern] = new RegExp('^' + pattern
@@ -253,24 +253,4 @@ function compilePattern(pattern) {
       .replace(/#/g, '(.*?)') + '$');
   }
   return regex;
-}
-
-module.exports = {
-  setSpec,
-  encrypt,
-  decrypt,
-  getType,
-  refToPath,
-  decryptRef,
-  encryptRef,
-  encryptPath,
-  specForPath,
-  encryptValue,
-  transformTree,
-  transformValue,
-  compilePattern,
-  setEncryptionCache,
-  setDecryptionCache,
-  throwNotSetUpError,
-  computeCacheItemSize,
-}
+};

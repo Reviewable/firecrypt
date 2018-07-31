@@ -1,6 +1,6 @@
-const utils = require('./utils');
+import * as utils from './utils';
 
-class FireCryptOnDisconnect {
+export default class FireCryptOnDisconnect {
   constructor(path, originalOnDisconnect) {
     this._path = path;
     this._originalOnDisconnect = originalOnDisconnect;
@@ -23,5 +23,3 @@ class FireCryptOnDisconnect {
     };
   }
 }
-
-module.exports = FireCryptOnDisconnect;
