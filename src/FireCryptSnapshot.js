@@ -1,10 +1,10 @@
-import * as utils from './utils';
+import * as crypto from './crypto';
 import FireCryptReference from './FireCryptReference';
 
 export default class FireCryptSnapshot {
   constructor(snap) {
-    this._ref = utils.decryptRef(snap.ref);
-    this._path = utils.refToPath(this._ref);
+    this._ref = crypto.decryptRef(snap.ref);
+    this._path = crypto.refToPath(this._ref);
     this._snap = snap;
 
     this._delegateSnapshot('exists');
@@ -30,7 +30,7 @@ export default class FireCryptSnapshot {
   }
 
   val() {
-    return utils.transformValue(this._path, this._snap.val(), utils.decrypt);
+    return crypto.transformValue(this._path, this._snap.val(), crypto.decrypt);
   }
 
   child(childPath) {
@@ -44,11 +44,11 @@ export default class FireCryptSnapshot {
   }
 
   hasChild(childPath) {
-    childPath = utils.encryptPath(childPath.split('/'), utils.specForPath(this._path)).join('/');
+    childPath = crypto.encryptPath(childPath.split('/'), crypto.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   }
 
   exportVal() {
-    return utils.transformValue(this._path, this._snap.exportVal(), utils.decrypt);
+    return crypto.transformValue(this._path, this._snap.exportVal(), crypto.decrypt);
   }
 }

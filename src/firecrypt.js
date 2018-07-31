@@ -17,7 +17,7 @@ CryptoJS.enc.Base64UrlSafe = {
   _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
 };
 
-import * as utils from './utils';
+import * as crypto from './crypto';
 import FireCryptQuery from './FireCryptQuery';
 import FireCryptSnapshot from './FireCryptSnapshot';
 import FireCryptReference from './FireCryptReference';
@@ -49,14 +49,14 @@ export default class FireCrypt {
     options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
     options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
     options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
-    encryptString = decryptString = utils.throwNotSetUpError;
+    encryptString = decryptString = crypto.throwNotSetUpError;
     
     if (typeof LRUCache === 'function') {
-      utils.setEncryptionCache(new LRUCache({
-        max: options.encryptionCacheSize, length: utils.computeCacheItemSize
+      crypto.setEncryptionCache(new LRUCache({
+        max: options.encryptionCacheSize, length: crypto.computeCacheItemSize
       }));
-      utils.setDecryptionCache(new LRUCache({
-        max: options.decryptionCacheSize, length: utils.computeCacheItemSize
+      crypto.setDecryptionCache(new LRUCache({
+        max: options.decryptionCacheSize, length: crypto.computeCacheItemSize
       }));
     }
 
@@ -75,7 +75,7 @@ export default class FireCrypt {
         throw new Error('Unknown encryption algorithm "' + options.algorithm + '".');
     }
 
-    utils.setSpec(specification);
+    crypto.setSpec(specification);
 
     return this;
   }

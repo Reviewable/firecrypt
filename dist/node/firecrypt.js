@@ -524,7 +524,7 @@ class FireCryptQuery {
 
   get ref() {
     // TODO: do I need to pass this to FireCryptReference constructor? If so, why am I getting that error?
-    // return new FireCryptReference(utils.decryptRef(this._query.ref));
+    // return new FireCryptReference(crypto.decryptRef(this._query.ref));
     return decryptRef(this._query.ref);
   }
 
@@ -591,6 +591,10 @@ class FireCryptQuery {
 
   limit() {
     return this._delegate('limit', arguments);
+  }
+
+  ref() {
+    return decryptRef(this._originalRef.ref.call(this._query));
   }
 
   _delegate(methodName, args) {

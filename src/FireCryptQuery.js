@@ -1,4 +1,4 @@
-import * as utils from './utils';
+import * as crypto from './crypto';
 import FireCryptSnapshot from './FireCryptSnapshot';
 import FireCryptReference from './FireCryptReference';
 
@@ -11,8 +11,8 @@ export default class FireCryptQuery {
 
   get ref() {
     // TODO: do I need to pass this to FireCryptReference constructor? If so, why am I getting that error?
-    // return new FireCryptReference(utils.decryptRef(this._query.ref));
-    return utils.decryptRef(this._query.ref);
+    // return new FireCryptReference(crypto.decryptRef(this._query.ref));
+    return crypto.decryptRef(this._query.ref);
   }
   
   on(eventType, callback, cancelCallback, context) {
@@ -64,10 +64,10 @@ export default class FireCryptQuery {
 
   equalTo(value, key) {
     if (this._order[this._order.by + 'Encrypted']) {
-      value = utils.encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
+      value = crypto.encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
     }
     if (key !== undefined && this._order.keyEncrypted) {
-      key = utils.encrypt(key, 'string', this._order.keyEncrypted);
+      key = crypto.encrypt(key, 'string', this._order.keyEncrypted);
     }
     return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order);
   }
@@ -84,6 +84,10 @@ export default class FireCryptQuery {
     return this._delegate('limit', arguments);
   }
 
+  ref() {
+    return crypto.decryptRef(this._originalRef.ref.call(this._query));
+  }
+
   _delegate(methodName, args) {
     return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order);
   }
@@ -97,7 +101,7 @@ export default class FireCryptQuery {
   }
 
   _orderBy(methodName, by, childKey) {
-    var def = utils.specForPath(utils.refToPath(this.ref));
+    var def = crypto.specForPath(crypto.refToPath(this.ref));
     var order = {by: by}
 
     var encryptedChildKey;
@@ -111,11 +115,11 @@ export default class FireCryptQuery {
           if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
         }
         if (childKey) {
-          var childDef = utils.specForPath(childPath, subDef);
+          var childDef = crypto.specForPath(childPath, subDef);
           if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
             order.childEncrypted = childDef['.encrypt'].value;
           }
-          var encryptedChildKeyCandidate = utils.encryptPath(childPath, subDef).join('/');
+          var encryptedChildKeyCandidate = crypto.encryptPath(childPath, subDef).join('/');
           if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
             throw new Error(
               'Incompatible encryption specifications for orderByChild("' + childKey + '")');
