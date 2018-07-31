@@ -57,7 +57,6 @@ export default class FireCrypt {
     switch (options.algorithm) {
       case 'aes-siv':
         if (!options.key) throw new Error('You must specify a key to use AES encryption.');
-        // TODO: update things that use this
         this.encryptionKeyCheckValue = setupAesSiv(options.key, options.keyCheckValue);
         break;
       case 'passthrough':
@@ -87,7 +86,16 @@ export default class FireCrypt {
   }
 
   ref(pathOrRef) {
-    // TODO: validate pathOrRef
+    const pathOrRefIsNonemptyString = typeof pathOrRef === 'string' && pathOrRef !== '';
+    const pathOrRefIsNonNullObject = typeof pathOrRef === 'object' && pathOrRef !== null;
+    const pathOrRefIsFirebaseRef = pathOrRefIsNonNullObject && typeof pathOrRef.ref === 'object' && typeof pathOrRef.ref.transaction !== 'function';
+      
+    if (!pathOrRefIsNonemptyString && !pathOrRefIsFirebaseRef) {
+      throw new Error(
+        `Expected first argument passed to ref()to be a non-empty string or a Firebase Database
+        reference, but got "${pathOrRef}".`
+      );
+    }
 
     return new FireCryptReference(this._db.ref(pathOrRef));
   }

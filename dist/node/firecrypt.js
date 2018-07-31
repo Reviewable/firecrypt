@@ -60,7 +60,7 @@ function encryptPath(path, def) {
     def = def[path[i]] || def.$;
     if (!def) break;
     if (def['.encrypt'] && def['.encrypt'].key) {
-      path[i] = encrypt$1(path[i], 'string', def['.encrypt'].key);
+      path[i] = encrypt(path[i], 'string', def['.encrypt'].key);
     }
   }
   return path;
@@ -150,7 +150,7 @@ function refToPath(ref, encrypted) {
   }
   return pathStr.split('/');
 }
-function encrypt$1(value, type, pattern) {
+function encrypt(value, type, pattern) {
   var cacheKey;
   if (_encryptionCache) {
     cacheKey = type.charAt(0) + pattern + '\x91' + value;
@@ -252,7 +252,7 @@ class FireCryptOnDisconnect {
     this[methodName] = function () {
       const args = Array.prototype.slice.call(arguments);
       if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = transformValue(this._path, args[argIndex], encrypt$1);
+        args[argIndex] = transformValue(this._path, args[argIndex], encrypt);
       }
 
       return this._originalOnDisconnect[methodName].apply(this._originalOnDisconnect, args);
@@ -264,9 +264,6 @@ class FireCryptReference {
   constructor(ref) {
     this._ref = ref;
 
-    this.get = ref.get;
-    this.remove = ref.remove;
-
     this._interceptPush();
     this._interceptTransaction();
     this._interceptOnDisconnect();
@@ -275,13 +272,14 @@ class FireCryptReference {
       this._interceptQuery(methodName);
     });
 
-    this.set = this._interceptWrite(ref, 'set', 0);
-    this.update = this._interceptWrite(ref, 'update', 0);
-    this.setPriority = this._interceptWrite(ref, 'setPriority');
-    this.setWithPriority = this._interceptWrite(ref, 'setWithPriority', 0);
+    this._interceptWrite('set', 0);
+    this._interceptWrite('remove');
+    this._interceptWrite('update', 0);
+    this._interceptWrite('setPriority');
+    this._interceptWrite('setWithPriority', 0);
 
     if (ref.childrenKeys) {
-      this.childrenKeys = this._interceptChildrenKeys(ref);
+      this._interceptChildrenKeys(ref);
     }
   }
 
@@ -301,7 +299,6 @@ class FireCryptReference {
    * @return {string|null} The last part this reference's path.
    */
   get key() {
-    console.log('GETTING KEY:', this._ref.key);
     return this._ref.key;
   }
 
@@ -385,26 +382,25 @@ class FireCryptReference {
   }
 
   _interceptPush() {
-    this.push = () => {
+    this.push = function () {
       // push() delegates to set(), which will take care of encrypting the ref and the argument.
       const pushedRef = this._ref.push.apply(this._ref, arguments);
-      const decryptedRef = decryptRef(pushedRef);
+      const decryptedRef = new FireCryptReference(decryptRef(pushedRef));
       decryptedRef.then = pushedRef.then;
       decryptedRef.catch = pushedRef.catch;
       if (pushedRef.finally) decryptedRef.finally = pushedRef.finally;
-      // TODO: do I need to pass to constructor here?
-      // return new FireCryptReference(decryptedRef);
       return decryptedRef;
     };
   }
 
   _interceptWrite(methodName, argIndex) {
-    this[methodName] = () => {
+    this[methodName] = function () {
       const encryptedRef = encryptRef(this._ref);
+      const path = refToPath(this._ref);
 
       const args = Array.prototype.slice.call(arguments);
       if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = transformValue(refToPath(path), args[argIndex], encrypt);
+        args[argIndex] = transformValue(path, args[argIndex], encrypt);
       }
 
       return this._ref[methodName].apply(encryptedRef, args);
@@ -412,7 +408,7 @@ class FireCryptReference {
   }
 
   _interceptChildrenKeys() {
-    this.childrenKeys = () => {
+    this.childrenKeys = function () {
       const encryptedRef = encryptRef(this._ref);
       return this._ref.childrenKeys.apply(encryptedRef, arguments).then(keys => {
         if (!keys.some(key => /\x91/.test(key))) {
@@ -424,14 +420,14 @@ class FireCryptReference {
   }
 
   _interceptOnDisconnect() {
-    this.onDisconnect = () => {
+    this.onDisconnect = function () {
       const encryptedRef = encryptRef(this._ref);
       return new FireCryptOnDisconnect(encryptedRef, this._ref.onDisconnect.call(encryptedRef));
     };
   }
 
   _interceptQuery(methodName) {
-    this[methodName] = () => {
+    this[methodName] = function () {
       const encryptedRef = encryptRef(this._ref);
       var query = new FireCryptQuery(encryptedRef, {}, this._ref);
       return query[methodName].apply(query, arguments);
@@ -439,14 +435,14 @@ class FireCryptReference {
   }
 
   _interceptTransaction() {
-    this.transaction = () => {
+    this.transaction = function () {
       var encryptedRef = encryptRef(this._ref);
       var args = Array.prototype.slice.call(arguments);
       var originalCompute = args[0];
       args[0] = originalCompute && function (value) {
         value = transformValue(path, value, decrypt);
         value = originalCompute(value);
-        value = transformValue(path, value, encrypt$1);
+        value = transformValue(path, value, encrypt);
         return value;
       };
       if (args.length > 1) {
@@ -483,7 +479,6 @@ class FireCryptSnapshot {
   }
 
   get key() {
-    console.log('getting snapshot key');
     return this._ref.key;
   }
 
@@ -571,10 +566,10 @@ class FireCryptQuery {
 
   equalTo(value, key) {
     if (this._order[this._order.by + 'Encrypted']) {
-      value = encrypt$1(value, getType(value), this._order[this._order.by + 'Encrypted']);
+      value = encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
     }
     if (key !== undefined && this._order.keyEncrypted) {
-      key = encrypt$1(key, 'string', this._order.keyEncrypted);
+      key = encrypt(key, 'string', this._order.keyEncrypted);
     }
     return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order);
   }
@@ -589,10 +584,6 @@ class FireCryptQuery {
 
   limit() {
     return this._delegate('limit', arguments);
-  }
-
-  ref() {
-    return decryptRef(this._originalRef.ref.call(this._query));
   }
 
   _delegate(methodName, args) {
@@ -696,7 +687,6 @@ class FireCrypt {
     switch (options.algorithm) {
       case 'aes-siv':
         if (!options.key) throw new Error('You must specify a key to use AES encryption.');
-        // TODO: update things that use this
         this.encryptionKeyCheckValue = setupAesSiv(options.key, options.keyCheckValue);
         break;
       case 'passthrough':
@@ -726,7 +716,14 @@ class FireCrypt {
   }
 
   ref(pathOrRef) {
-    // TODO: validate pathOrRef
+    const pathOrRefIsNonemptyString = typeof pathOrRef === 'string' && pathOrRef !== '';
+    const pathOrRefIsNonNullObject = typeof pathOrRef === 'object' && pathOrRef !== null;
+    const pathOrRefIsFirebaseRef = pathOrRefIsNonNullObject && typeof pathOrRef.ref === 'object' && typeof pathOrRef.ref.transaction !== 'function';
+
+    if (!pathOrRefIsNonemptyString && !pathOrRefIsFirebaseRef) {
+      throw new Error(`Expected first argument passed to ref()to be a non-empty string or a Firebase Database
+        reference, but got "${pathOrRef}".`);
+    }
 
     return new FireCryptReference(this._db.ref(pathOrRef));
   }

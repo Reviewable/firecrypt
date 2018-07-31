@@ -7,9 +7,6 @@ export default class FireCryptReference {
   constructor(ref) {
     this._ref = ref;
 
-    this.get = ref.get;
-    this.remove = ref.remove;
-
     this._interceptPush();
     this._interceptTransaction();
     this._interceptOnDisconnect();
@@ -19,13 +16,14 @@ export default class FireCryptReference {
       'equalTo', 'limitToFirst', 'limitToLast'
     ].forEach((methodName) => {this._interceptQuery(methodName);});
 
-    this.set = this._interceptWrite(ref, 'set', 0);
-    this.update = this._interceptWrite(ref, 'update', 0);
-    this.setPriority = this._interceptWrite(ref, 'setPriority');
-    this.setWithPriority = this._interceptWrite(ref, 'setWithPriority', 0);
+    this._interceptWrite('set', 0);
+    this._interceptWrite('remove');
+    this._interceptWrite('update', 0);
+    this._interceptWrite('setPriority');
+    this._interceptWrite('setWithPriority', 0);
 
     if (ref.childrenKeys) {
-      this.childrenKeys = this._interceptChildrenKeys(ref);
+      this._interceptChildrenKeys(ref);
     }
   }
 
@@ -128,26 +126,25 @@ export default class FireCryptReference {
   }
 
   _interceptPush() {
-    this.push = () => {
+    this.push = function() {
       // push() delegates to set(), which will take care of encrypting the ref and the argument.
       const pushedRef = this._ref.push.apply(this._ref, arguments);
-      const decryptedRef = crypto.decryptRef(pushedRef);
+      const decryptedRef = new FireCryptReference(crypto.decryptRef(pushedRef));
       decryptedRef.then = pushedRef.then;
       decryptedRef.catch = pushedRef.catch;
       if (pushedRef.finally) decryptedRef.finally = pushedRef.finally;
-      // TODO: do I need to pass to constructor here?
-      // return new FireCryptReference(decryptedRef);
       return decryptedRef;
     };
   }
   
   _interceptWrite(methodName, argIndex) {
-    this[methodName] = () => {
+    this[methodName] = function() {
       const encryptedRef = crypto.encryptRef(this._ref);
+      const path = crypto.refToPath(this._ref);
   
       const args = Array.prototype.slice.call(arguments);
       if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = crypto.transformValue(crypto.refToPath(path), args[argIndex], encrypt);
+        args[argIndex] = crypto.transformValue(path, args[argIndex], crypto.encrypt);
       }
   
       return this._ref[methodName].apply(encryptedRef, args);
@@ -155,7 +152,7 @@ export default class FireCryptReference {
   }
   
   _interceptChildrenKeys() {
-    this.childrenKeys = () => {
+    this.childrenKeys = function() {
       const encryptedRef = crypto.encryptRef(this._ref);
       return this._ref.childrenKeys.apply(encryptedRef, arguments).then((keys) => {
         if (!keys.some((key) => /\x91/.test(key))) {
@@ -167,14 +164,14 @@ export default class FireCryptReference {
   }
 
   _interceptOnDisconnect() {
-    this.onDisconnect = () => {
+    this.onDisconnect = function() {
       const encryptedRef = crypto.encryptRef(this._ref);
       return new FireCryptOnDisconnect(encryptedRef, this._ref.onDisconnect.call(encryptedRef));
     };
   }
   
   _interceptQuery(methodName) {
-    this[methodName] = () => {
+    this[methodName] = function() {
       const encryptedRef = crypto.encryptRef(this._ref);
       var query = new FireCryptQuery(encryptedRef, {}, this._ref);
       return query[methodName].apply(query, arguments);
@@ -182,7 +179,7 @@ export default class FireCryptReference {
   }
 
   _interceptTransaction() {
-    this.transaction = () => {
+    this.transaction = function() {
       var encryptedRef = crypto.encryptRef(this._ref);
       var args = Array.prototype.slice.call(arguments);
       var originalCompute = args[0];
