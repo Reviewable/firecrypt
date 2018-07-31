@@ -8,7 +8,7 @@ if (typeof require !== 'undefined') {
 CryptoJS.enc.Base64UrlSafe = {
   stringify: CryptoJS.enc.Base64.stringify,
   parse: CryptoJS.enc.Base64.parse,
-  _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+  _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_',
 };
 
 import * as crypto from './crypto';
@@ -17,12 +17,9 @@ import FireCryptSnapshot from './FireCryptSnapshot';
 import FireCryptReference from './FireCryptReference';
 import FireCryptOnDisconnect from './FireCryptOnDisconnect';
 
-let encryptString;
-let decryptString;
-
 export default class FireCrypt {
   constructor(db, options = {}, specification = {}) {
-    const dbIsNonNullObject = (typeof db === 'object' && db !== null);
+    const dbIsNonNullObject = typeof db === 'object' && db !== null;
     if (!dbIsNonNullObject || typeof db.app !== 'object' || typeof db.ref !== 'function') {
       throw new Error(
         `Expected first argument passed to FireCrypt constructor to be a Firebase Database instance, 
@@ -43,8 +40,10 @@ export default class FireCrypt {
     options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
     options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
     options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
-    encryptString = decryptString = crypto.throwNotSetUpError;
-    
+
+    crypto.setEncryptStringFunction(crypto.throwNotSetUpError);
+    crypto.setDecryptStringFunction(crypto.throwNotSetUpError);
+
     if (typeof LRUCache === 'function') {
       crypto.setEncryptionCache(new LRUCache({
         max: options.encryptionCacheSize, length: crypto.computeCacheItemSize
@@ -60,7 +59,8 @@ export default class FireCrypt {
         this.encryptionKeyCheckValue = setupAesSiv(options.key, options.keyCheckValue);
         break;
       case 'passthrough':
-        encryptString = decryptString = (str) => str;
+        crypto.setEncryptStringFunction((str) => str);
+        crypto.setDecryptStringFunction((str) => str);
         break;
       case 'none':
         break;
@@ -70,7 +70,9 @@ export default class FireCrypt {
 
     crypto.setSpec(specification);
 
-    return this;
+    return () => {
+      return this;
+    };
   }
 
   get app() {
@@ -88,8 +90,11 @@ export default class FireCrypt {
   ref(pathOrRef) {
     const pathOrRefIsNonemptyString = typeof pathOrRef === 'string' && pathOrRef !== '';
     const pathOrRefIsNonNullObject = typeof pathOrRef === 'object' && pathOrRef !== null;
-    const pathOrRefIsFirebaseRef = pathOrRefIsNonNullObject && typeof pathOrRef.ref === 'object' && typeof pathOrRef.ref.transaction !== 'function';
-      
+    const pathOrRefIsFirebaseRef =
+      pathOrRefIsNonNullObject &&
+      typeof pathOrRef.ref === 'object' &&
+      typeof pathOrRef.ref.transaction !== 'function';
+
     if (!pathOrRefIsNonemptyString && !pathOrRefIsFirebaseRef) {
       throw new Error(
         `Expected first argument passed to ref()to be a non-empty string or a Firebase Database
@@ -102,19 +107,23 @@ export default class FireCrypt {
 }
 
 function setupAesSiv(key, checkValue) {
-  var siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
-  encryptString = function(str) {
+  const siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
+  const encryptString = (str) => {
     return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
   };
-  decryptString = function(str) {
-    var result = siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str));
+  const decryptString = (str) => {
+    const result = siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str));
     if (result === false) {
-      var e = new Error('Wrong decryption key');
+      const e = new Error('Wrong decryption key');
       e.firecrypt = 'WRONG_KEY';
       throw e;
     }
     return CryptoJS.enc.Utf8.stringify(result);
   };
+
+  crypto.setEncryptStringFunction(encryptString);
+  crypto.setDecryptStringFunction(decryptString);
+
   if (checkValue) decryptString(checkValue);
   return encryptString(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));
 }

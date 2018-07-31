@@ -1,10 +1,20 @@
 let _spec;
+let _encryptString;
+let _decryptString;
 let _encryptionCache;
 let _decryptionCache;
 
 export function setSpec(spec) {
   _spec = cleanSpecification(spec);
-};
+}
+
+export function setEncryptStringFunction(encryptString) {
+  _encryptString = encryptString;
+}
+
+export function setDecryptStringFunction(decryptString) {
+  _decryptString = decryptString;
+}
 
 export function setEncryptionCache(cache) {
   _encryptionCache = cache;
@@ -195,7 +205,7 @@ export function encryptValue(value, type) {
     case 'number': value = '' + value; break;
     case 'boolean': value = value ? 't' : 'f'; break;
   }
-  return '\x91' + type.charAt(0).toUpperCase() + encryptString(value) + '\x92';
+  return '\x91' + type.charAt(0).toUpperCase() + _encryptString(value) + '\x92';
 };
 
 export function decrypt(value) {
@@ -204,7 +214,7 @@ export function decrypt(value) {
   var result;
   var match = value.match(/^\x91(.)([^\x92]*)\x92$/);
   if (match) {
-    var decryptedString = decryptString(match[2]);
+    var decryptedString = _decryptString(match[2]);
     switch (match[1]) {
       case 'S':
         result = decryptedString;
@@ -225,7 +235,7 @@ export function decrypt(value) {
   } else {
     result = value.replace(/\x91(.)([^\x92]*)\x92/g, function(match, typeCode, encryptedString) {
       if (typeCode !== 'S') throw new Error('Invalid multi-segment encrypted value: ' + typeCode);
-      return decryptString(encryptedString);
+      return _decryptString(encryptedString);
     });
   }
   if (_decryptionCache) _decryptionCache.set(value, result);

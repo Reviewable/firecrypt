@@ -95,25 +95,25 @@ export default class FireCryptQuery {
   }
 
   _orderBy(methodName, by, childKey) {
-    var def = crypto.specForPath(crypto.refToPath(this.ref));
-    var order = {by: by}
+    const def = crypto.specForPath(crypto.refToPath(this.ref));
+    const order = {by: by}
 
-    var encryptedChildKey;
+    let encryptedChildKey;
     if (def) {
-      var childPath = childKey && childKey.split('/');
-      for (var subKey in def) {
+      const childPath = childKey && childKey.split('/');
+      for (const subKey in def) {
         if (!def.hasOwnProperty(subKey)) continue;
-        var subDef = def[subKey];
+        const subDef = def[subKey];
         if (subDef['.encrypt']) {
           if (subDef['.encrypt'].key) order.keyEncrypted = subDef['.encrypt'].key;
           if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
         }
         if (childKey) {
-          var childDef = crypto.specForPath(childPath, subDef);
+          const childDef = crypto.specForPath(childPath, subDef);
           if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
             order.childEncrypted = childDef['.encrypt'].value;
           }
-          var encryptedChildKeyCandidate = crypto.encryptPath(childPath, subDef).join('/');
+          const encryptedChildKeyCandidate = crypto.encryptPath(childPath, subDef).join('/');
           if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
             throw new Error(
               'Incompatible encryption specifications for orderByChild("' + childKey + '")');
@@ -133,7 +133,7 @@ export default class FireCryptQuery {
 
 function wrapQueryCallback(callback) {
   if (!callback || callback.firecryptCallback) return;
-  var wrappedCallback = function(snap, previousChildKey) {
+  const wrappedCallback = function(snap, previousChildKey) {
     return callback.call(this, new FireCryptSnapshot(snap), previousChildKey);
   };
   wrappedCallback.firecryptCallback = wrappedCallback;

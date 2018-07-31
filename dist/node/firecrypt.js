@@ -1,12 +1,23 @@
 'use strict';
 
 let _spec;
+let _encryptString;
+let _decryptString;
 let _encryptionCache;
 let _decryptionCache;
 
 function setSpec(spec) {
   _spec = cleanSpecification(spec);
 }
+
+function setEncryptStringFunction(encryptString) {
+  _encryptString = encryptString;
+}
+
+function setDecryptStringFunction(decryptString) {
+  _decryptString = decryptString;
+}
+
 function setEncryptionCache(cache) {
   _encryptionCache = cache;
 }
@@ -185,7 +196,7 @@ function encryptValue(value, type) {
     case 'boolean':
       value = value ? 't' : 'f';break;
   }
-  return '\x91' + type.charAt(0).toUpperCase() + encryptString(value) + '\x92';
+  return '\x91' + type.charAt(0).toUpperCase() + _encryptString(value) + '\x92';
 }
 function decrypt(value) {
   if (_decryptionCache && _decryptionCache.has(value)) return _decryptionCache.get(value);
@@ -193,7 +204,7 @@ function decrypt(value) {
   var result;
   var match = value.match(/^\x91(.)([^\x92]*)\x92$/);
   if (match) {
-    var decryptedString = decryptString(match[2]);
+    var decryptedString = _decryptString(match[2]);
     switch (match[1]) {
       case 'S':
         result = decryptedString;
@@ -212,7 +223,7 @@ function decrypt(value) {
   } else {
     result = value.replace(/\x91(.)([^\x92]*)\x92/g, function (match, typeCode, encryptedString) {
       if (typeCode !== 'S') throw new Error('Invalid multi-segment encrypted value: ' + typeCode);
-      return decryptString(encryptedString);
+      return _decryptString(encryptedString);
     });
   }
   if (_decryptionCache) _decryptionCache.set(value, result);
@@ -429,16 +440,18 @@ class FireCryptReference {
   _interceptQuery(methodName) {
     this[methodName] = function () {
       const encryptedRef = encryptRef(this._ref);
-      var query = new FireCryptQuery(encryptedRef, {}, this._ref);
+      const query = new FireCryptQuery(encryptedRef, {}, this._ref);
       return query[methodName].apply(query, arguments);
     };
   }
 
   _interceptTransaction() {
     this.transaction = function () {
-      var encryptedRef = encryptRef(this._ref);
-      var args = Array.prototype.slice.call(arguments);
-      var originalCompute = args[0];
+      const encryptedRef = encryptRef(this._ref);
+      const path = refToPath(this._ref);
+
+      const args = Array.prototype.slice.call(arguments);
+      const originalCompute = args[0];
       args[0] = originalCompute && function (value) {
         value = transformValue(path, value, decrypt);
         value = originalCompute(value);
@@ -446,7 +459,7 @@ class FireCryptReference {
         return value;
       };
       if (args.length > 1) {
-        var originalOnComplete = args[1];
+        const originalOnComplete = args[1];
         args[1] = originalOnComplete && function (error, committed, snapshot) {
           return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot));
         };
@@ -597,25 +610,25 @@ class FireCryptQuery {
   }
 
   _orderBy(methodName, by, childKey) {
-    var def = specForPath(refToPath(this.ref));
-    var order = { by: by };
+    const def = specForPath(refToPath(this.ref));
+    const order = { by: by };
 
-    var encryptedChildKey;
+    let encryptedChildKey;
     if (def) {
-      var childPath = childKey && childKey.split('/');
-      for (var subKey in def) {
+      const childPath = childKey && childKey.split('/');
+      for (const subKey in def) {
         if (!def.hasOwnProperty(subKey)) continue;
-        var subDef = def[subKey];
+        const subDef = def[subKey];
         if (subDef['.encrypt']) {
           if (subDef['.encrypt'].key) order.keyEncrypted = subDef['.encrypt'].key;
           if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
         }
         if (childKey) {
-          var childDef = specForPath(childPath, subDef);
+          const childDef = specForPath(childPath, subDef);
           if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
             order.childEncrypted = childDef['.encrypt'].value;
           }
-          var encryptedChildKeyCandidate = encryptPath(childPath, subDef).join('/');
+          const encryptedChildKeyCandidate = encryptPath(childPath, subDef).join('/');
           if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
             throw new Error('Incompatible encryption specifications for orderByChild("' + childKey + '")');
           }
@@ -633,7 +646,7 @@ class FireCryptQuery {
 
 function wrapQueryCallback(callback) {
   if (!callback || callback.firecryptCallback) return;
-  var wrappedCallback = function (snap, previousChildKey) {
+  const wrappedCallback = function (snap, previousChildKey) {
     return callback.call(this, new FireCryptSnapshot(snap), previousChildKey);
   };
   wrappedCallback.firecryptCallback = wrappedCallback;
@@ -653,9 +666,6 @@ CryptoJS.enc.Base64UrlSafe = {
   _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
 };
 
-let encryptString$1;
-let decryptString$1;
-
 class FireCrypt {
   constructor(db, options = {}, specification = {}) {
     const dbIsNonNullObject = typeof db === 'object' && db !== null;
@@ -673,7 +683,9 @@ class FireCrypt {
     options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
     options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
     options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
-    encryptString$1 = decryptString$1 = throwNotSetUpError;
+
+    setEncryptStringFunction(throwNotSetUpError);
+    setDecryptStringFunction(throwNotSetUpError);
 
     if (typeof LRUCache === 'function') {
       setEncryptionCache(new LRUCache({
@@ -690,7 +702,8 @@ class FireCrypt {
         this.encryptionKeyCheckValue = setupAesSiv(options.key, options.keyCheckValue);
         break;
       case 'passthrough':
-        encryptString$1 = decryptString$1 = str => str;
+        setEncryptStringFunction(str => str);
+        setDecryptStringFunction(str => str);
         break;
       case 'none':
         break;
@@ -700,7 +713,9 @@ class FireCrypt {
 
     setSpec(specification);
 
-    return this;
+    return () => {
+      return this;
+    };
   }
 
   get app() {
@@ -730,21 +745,25 @@ class FireCrypt {
 }
 
 function setupAesSiv(key, checkValue) {
-  var siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
-  encryptString$1 = function (str) {
+  const siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
+  const encryptString = str => {
     return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
   };
-  decryptString$1 = function (str) {
-    var result = siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str));
+  const decryptString = str => {
+    const result = siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str));
     if (result === false) {
-      var e = new Error('Wrong decryption key');
+      const e = new Error('Wrong decryption key');
       e.firecrypt = 'WRONG_KEY';
       throw e;
     }
     return CryptoJS.enc.Utf8.stringify(result);
   };
-  if (checkValue) decryptString$1(checkValue);
-  return encryptString$1(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));
+
+  setEncryptStringFunction(encryptString);
+  setDecryptStringFunction(decryptString);
+
+  if (checkValue) decryptString(checkValue);
+  return encryptString(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));
 }
 
 module.exports = FireCrypt;

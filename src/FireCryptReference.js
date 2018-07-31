@@ -173,16 +173,18 @@ export default class FireCryptReference {
   _interceptQuery(methodName) {
     this[methodName] = function() {
       const encryptedRef = crypto.encryptRef(this._ref);
-      var query = new FireCryptQuery(encryptedRef, {}, this._ref);
+      const query = new FireCryptQuery(encryptedRef, {}, this._ref);
       return query[methodName].apply(query, arguments);
     }
   }
 
   _interceptTransaction() {
     this.transaction = function() {
-      var encryptedRef = crypto.encryptRef(this._ref);
-      var args = Array.prototype.slice.call(arguments);
-      var originalCompute = args[0];
+      const encryptedRef = crypto.encryptRef(this._ref);
+      const path = crypto.refToPath(this._ref);
+
+      const args = Array.prototype.slice.call(arguments);
+      const originalCompute = args[0];
       args[0] = originalCompute && function(value) {
         value = crypto.transformValue(path, value, crypto.decrypt);
         value = originalCompute(value);
@@ -190,7 +192,7 @@ export default class FireCryptReference {
         return value;
       };
       if (args.length > 1) {
-        var originalOnComplete = args[1];
+        const originalOnComplete = args[1];
         args[1] = originalOnComplete && function(error, committed, snapshot) {
           return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot));
         };
