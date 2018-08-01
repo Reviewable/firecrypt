@@ -19,8 +19,6 @@ export default class FireCryptReference {
     this._interceptWrite('set', 0);
     this._interceptWrite('remove');
     this._interceptWrite('update', 0);
-    this._interceptWrite('setPriority');
-    this._interceptWrite('setWithPriority', 0);
 
     if (ref.childrenKeys) {
       this._interceptChildrenKeys(ref);

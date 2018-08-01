@@ -11,7 +11,6 @@ export default class FireCryptSnapshot {
     this._delegateSnapshot('toJSON');
     this._delegateSnapshot('hasChildren');
     this._delegateSnapshot('numChildren');
-    this._delegateSnapshot('getPriority');
   }
 
   _delegateSnapshot(methodName) {

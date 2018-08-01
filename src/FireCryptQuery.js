@@ -46,10 +46,6 @@ export default class FireCryptQuery {
     return this._orderBy('orderByValue', 'value');
   }
 
-  orderByPriority() {
-    return this._orderBy('orderByPriority', 'priority');
-  }
-
   startAt(value, key) {
     this._checkCanSort(key !== undefined);
     return this._delegate('startAt', arguments);

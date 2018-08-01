@@ -8,7 +8,6 @@ export default class FireCryptOnDisconnect {
     this._interceptOnDisconnectWrite('set', 0);
     this._interceptOnDisconnectWrite('update', 0);
     this._interceptOnDisconnectWrite('remove');
-    this._interceptOnDisconnectWrite('setWithPriority', 0);
     this._interceptOnDisconnectWrite('cancel');
   }
 

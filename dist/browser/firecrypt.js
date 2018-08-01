@@ -274,7 +274,6 @@ var FireCrypt = (function () {
       this._delegateSnapshot('toJSON');
       this._delegateSnapshot('hasChildren');
       this._delegateSnapshot('numChildren');
-      this._delegateSnapshot('getPriority');
     }
 
     _delegateSnapshot(methodName) {
@@ -353,10 +352,6 @@ var FireCrypt = (function () {
 
     orderByValue() {
       return this._orderBy('orderByValue', 'value');
-    }
-
-    orderByPriority() {
-      return this._orderBy('orderByPriority', 'priority');
     }
 
     startAt(value, key) {
@@ -453,7 +448,6 @@ var FireCrypt = (function () {
       this._interceptOnDisconnectWrite('set', 0);
       this._interceptOnDisconnectWrite('update', 0);
       this._interceptOnDisconnectWrite('remove');
-      this._interceptOnDisconnectWrite('setWithPriority', 0);
       this._interceptOnDisconnectWrite('cancel');
     }
 
@@ -484,8 +478,6 @@ var FireCrypt = (function () {
       this._interceptWrite('set', 0);
       this._interceptWrite('remove');
       this._interceptWrite('update', 0);
-      this._interceptWrite('setPriority');
-      this._interceptWrite('setWithPriority', 0);
 
       if (ref.childrenKeys) {
         this._interceptChildrenKeys(ref);
