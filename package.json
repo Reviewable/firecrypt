@@ -27,12 +27,12 @@
   "dependencies": {
     "crypto-js": "^3.1.9-1",
     "cryptojs-extension": "pkaminski/cryptojs-extension",
+    "eslint": "^5.2.0",
+    "eslint-plugin-node": "^7.0.1",
     "serialized-lru-cache": "^3.1.0"
   },
   "devDependencies": {
     "babel-core": "^6.26.3",
-    "firebase": "^2.4.2",
-    "firebase-admin": "^5.13.0",
     "rollup": "^0.63.4",
     "rollup-plugin-babel": "^3.0.7",
     "rollup-plugin-minify-es": "^1.1.1"
