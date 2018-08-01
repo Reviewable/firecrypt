@@ -18,11 +18,11 @@ export function setDecryptStringFunction(decryptString) {
 
 export function setEncryptionCache(cache) {
   _encryptionCache = cache;
-};
+}
 
 export function setDecryptionCache(cache) {
   _decryptionCache = cache;
-};
+}
 
 export function cleanSpecification(def, path) {
   var keys = Object.keys(def);
@@ -55,17 +55,17 @@ export function cleanSpecification(def, path) {
     }
   }
   return def;
-};
+}
 
 export function throwNotSetUpError() {
   var e = new Error('Encryption not set up');
   e.firecrypt = 'NO_KEY';
   throw e;
-};
+}
 
 export function computeCacheItemSize(value, key) {
   return key.length + (typeof value === 'string' ? value.length : 4);
-};
+}
 
 export function encryptPath(path, def) {
   def = def || _spec.rules;
@@ -78,12 +78,12 @@ export function encryptPath(path, def) {
     }
   }
   return path;
-};
+}
 
 export function encryptRef(ref, path) {
   var encryptedPath = encryptPath(path || refToPath(ref));
   return encryptedPath.length ? ref.root.child(encryptedPath.join('/')) : ref.root;
-};
+}
 
 export function decryptRef(ref) {
   var path = refToPath(ref, true);
@@ -96,7 +96,7 @@ export function decryptRef(ref) {
     }
   }
   return changed ? ref.root.child(path.join('/')) : ref;
-};
+}
 
 export function specForPath(path, def) {
   def = def || _spec.rules;
@@ -104,11 +104,11 @@ export function specForPath(path, def) {
     def = def[path[i]] || def.$;
   }
   return def;
-};
+}
 
 export function transformValue(path, value, transform) {
   return transformTree(value, specForPath(path), transform);
-};
+}
 
 export function transformTree(value, def, transform) {
   if (!def) return value;
@@ -157,7 +157,7 @@ export function transformTree(value, def, transform) {
     for (i = 0; i < value.length; i++) value[i] = transformTree(value[i], def.$, transform);
   }
   return value;
-};
+}
 
 export function refToPath(ref, encrypted) {
   var root = ref.root;
@@ -168,7 +168,7 @@ export function refToPath(ref, encrypted) {
     throw new Error('Path contains invalid characters: ' + pathStr);
   }
   return pathStr.split('/');
-};
+}
 
 export function encrypt(value, type, pattern) {
   var cacheKey;
@@ -197,7 +197,7 @@ export function encrypt(value, type, pattern) {
   }
   if (_encryptionCache) _encryptionCache.set(cacheKey, result);
   return result;
-};
+}
 
 export function encryptValue(value, type) {
   if (!/^(string|number|boolean)$/.test(type)) throw new Error('Can\'t encrypt a ' + type);
@@ -206,7 +206,7 @@ export function encryptValue(value, type) {
     case 'boolean': value = value ? 't' : 'f'; break;
   }
   return '\x91' + type.charAt(0).toUpperCase() + _encryptString(value) + '\x92';
-};
+}
 
 export function decrypt(value) {
   if (_decryptionCache && _decryptionCache.has(value)) return _decryptionCache.get(value);
@@ -240,7 +240,7 @@ export function decrypt(value) {
   }
   if (_decryptionCache) _decryptionCache.set(value, result);
   return result;
-};
+}
 
 export function getType(value) {
   if (Array.isArray(value)) return 'array';
@@ -251,7 +251,7 @@ export function getType(value) {
     else if (value instanceof Boolean) type = 'boolean';
   }
   return type;
-};
+}
 
 var patternRegexes = {};
 export function compilePattern(pattern) {
@@ -263,4 +263,4 @@ export function compilePattern(pattern) {
       .replace(/#/g, '(.*?)') + '$');
   }
   return regex;
-};
+}

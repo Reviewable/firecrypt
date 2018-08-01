@@ -21,9 +21,11 @@ function setDecryptStringFunction(decryptString) {
 function setEncryptionCache(cache) {
   _encryptionCache = cache;
 }
+
 function setDecryptionCache(cache) {
   _decryptionCache = cache;
 }
+
 function cleanSpecification(def, path) {
   var keys = Object.keys(def);
   for (var i = 0; i < keys.length; i++) {
@@ -56,14 +58,17 @@ function cleanSpecification(def, path) {
   }
   return def;
 }
+
 function throwNotSetUpError() {
   var e = new Error('Encryption not set up');
   e.firecrypt = 'NO_KEY';
   throw e;
 }
+
 function computeCacheItemSize(value, key) {
   return key.length + (typeof value === 'string' ? value.length : 4);
 }
+
 function encryptPath(path, def) {
   def = def || _spec.rules;
   path = path.slice();
@@ -76,10 +81,12 @@ function encryptPath(path, def) {
   }
   return path;
 }
+
 function encryptRef(ref, path) {
   var encryptedPath = encryptPath(path || refToPath(ref));
   return encryptedPath.length ? ref.root.child(encryptedPath.join('/')) : ref.root;
 }
+
 function decryptRef(ref) {
   var path = refToPath(ref, true);
   var changed = false;
@@ -92,6 +99,7 @@ function decryptRef(ref) {
   }
   return changed ? ref.root.child(path.join('/')) : ref;
 }
+
 function specForPath(path, def) {
   def = def || _spec.rules;
   for (var i = 0; def && i < path.length; i++) {
@@ -99,12 +107,14 @@ function specForPath(path, def) {
   }
   return def;
 }
+
 function transformValue(path, value, transform) {
   return transformTree(value, specForPath(path), transform);
 }
+
 function transformTree(value, def, transform) {
   if (!def) return value;
-  var type = getType$1(value);
+  var type = getType(value);
   var i;
   if (/^(string|number|boolean)$/.test(type)) {
     if (def['.encrypt'] && def['.encrypt'].value) {
@@ -152,6 +162,7 @@ function transformTree(value, def, transform) {
   }
   return value;
 }
+
 function refToPath(ref, encrypted) {
   var root = ref.root;
   if (ref === root) return [];
@@ -161,6 +172,7 @@ function refToPath(ref, encrypted) {
   }
   return pathStr.split('/');
 }
+
 function encrypt(value, type, pattern) {
   var cacheKey;
   if (_encryptionCache) {
@@ -188,6 +200,7 @@ function encrypt(value, type, pattern) {
   if (_encryptionCache) _encryptionCache.set(cacheKey, result);
   return result;
 }
+
 function encryptValue(value, type) {
   if (!/^(string|number|boolean)$/.test(type)) throw new Error('Can\'t encrypt a ' + type);
   switch (type) {
@@ -198,6 +211,7 @@ function encryptValue(value, type) {
   }
   return '\x91' + type.charAt(0).toUpperCase() + _encryptString(value) + '\x92';
 }
+
 function decrypt(value) {
   if (_decryptionCache && _decryptionCache.has(value)) return _decryptionCache.get(value);
   if (!/\x91/.test(value)) return value;
@@ -229,7 +243,8 @@ function decrypt(value) {
   if (_decryptionCache) _decryptionCache.set(value, result);
   return result;
 }
-function getType$1(value) {
+
+function getType(value) {
   if (Array.isArray(value)) return 'array';
   var type = typeof value;
   if (type === 'object') {
@@ -237,6 +252,7 @@ function getType$1(value) {
   }
   return type;
 }
+
 var patternRegexes = {};
 function compilePattern(pattern) {
   var regex = patternRegexes[pattern];
@@ -245,6 +261,187 @@ function compilePattern(pattern) {
     .replace(/#/g, '(.*?)') + '$');
   }
   return regex;
+}
+
+class FireCryptSnapshot {
+  constructor(snap) {
+    this._ref = decryptRef(snap.ref);
+    this._path = refToPath(this._ref);
+    this._snap = snap;
+
+    this._delegateSnapshot('exists');
+    this._delegateSnapshot('toJSON');
+    this._delegateSnapshot('hasChildren');
+    this._delegateSnapshot('numChildren');
+    this._delegateSnapshot('getPriority');
+  }
+
+  _delegateSnapshot(methodName) {
+    this[methodName] = function () {
+      return this._snap[methodName].apply(this._snap, arguments);
+    };
+  }
+
+  get key() {
+    return this._ref.key;
+  }
+
+  get ref() {
+    return new FireCryptReference(this._ref.ref);
+  }
+
+  val() {
+    return transformValue(this._path, this._snap.val(), decrypt);
+  }
+
+  child(childPath) {
+    return new FireCryptSnapshot(this._snap.child(childPath));
+  }
+
+  forEach(action) {
+    return this._snap.forEach(function (childSnap) {
+      return action(new FireCryptSnapshot(childSnap));
+    });
+  }
+
+  hasChild(childPath) {
+    childPath = encryptPath(childPath.split('/'), specForPath(this._path)).join('/');
+    return this._snap.hasChild(childPath);
+  }
+
+  exportVal() {
+    return transformValue(this._path, this._snap.exportVal(), decrypt);
+  }
+}
+
+class FireCryptQuery {
+  constructor(query, order, originalRef) {
+    this._query = query;
+    this._order = order || {};
+    this._originalRef = originalRef || query;
+  }
+
+  get ref() {
+    return new FireCryptReference(decryptRef(this._query.ref));
+  }
+
+  on(eventType, callback, cancelCallback, context) {
+    wrapQueryCallback(callback);
+    return this._originalRef.on.call(this._query, eventType, callback.firecryptCallback, cancelCallback, context);
+  }
+
+  off(eventType, callback, context) {
+    if (callback && callback.firecryptCallback) callback = callback.firecryptCallback;
+    return this._originalRef.off.call(this._query, eventType, callback, context);
+  }
+
+  once(eventType, successCallback, failureCallback, context) {
+    wrapQueryCallback(successCallback);
+    return this._originalRef.once.call(this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback, context).then(snap => {
+      return new FireCryptSnapshot(snap);
+    });
+  }
+
+  orderByChild(key) {
+    return this._orderBy('orderByChild', 'child', key);
+  }
+
+  orderByKey() {
+    return this._orderBy('orderByKey', 'key');
+  }
+
+  orderByValue() {
+    return this._orderBy('orderByValue', 'value');
+  }
+
+  orderByPriority() {
+    return this._orderBy('orderByPriority', 'priority');
+  }
+
+  startAt(value, key) {
+    this._checkCanSort(key !== undefined);
+    return this._delegate('startAt', arguments);
+  }
+
+  endAt(value, key) {
+    this._checkCanSort(key !== undefined);
+    return this._delegate('endAt', arguments);
+  }
+
+  equalTo(value, key) {
+    if (this._order[this._order.by + 'Encrypted']) {
+      value = encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
+    }
+    if (key !== undefined && this._order.keyEncrypted) {
+      key = encrypt(key, 'string', this._order.keyEncrypted);
+    }
+    return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order);
+  }
+
+  limitToFirst() {
+    return this._delegate('limitToFirst', arguments);
+  }
+
+  limitToLast() {
+    return this._delegate('limitToLast', arguments);
+  }
+
+  limit() {
+    return this._delegate('limit', arguments);
+  }
+
+  _delegate(methodName, args) {
+    return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order);
+  }
+
+  _checkCanSort(hasExtraKey) {
+    if (this._order.by === 'key' ? this._order.keyEncrypted : this._order.valueEncrypted || hasExtraKey && this._order.keyEncrypted) {
+      throw new Error('Encrypted items cannot be ordered');
+    }
+  }
+
+  _orderBy(methodName, by, childKey) {
+    const def = specForPath(refToPath(this.ref));
+    const order = { by: by };
+
+    let encryptedChildKey;
+    if (def) {
+      const childPath = childKey && childKey.split('/');
+      for (const subKey in def) {
+        if (!def.hasOwnProperty(subKey)) continue;
+        const subDef = def[subKey];
+        if (subDef['.encrypt']) {
+          if (subDef['.encrypt'].key) order.keyEncrypted = subDef['.encrypt'].key;
+          if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
+        }
+        if (childKey) {
+          const childDef = specForPath(childPath, subDef);
+          if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
+            order.childEncrypted = childDef['.encrypt'].value;
+          }
+          const encryptedChildKeyCandidate = encryptPath(childPath, subDef).join('/');
+          if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
+            throw new Error('Incompatible encryption specifications for orderByChild("' + childKey + '")');
+          }
+          encryptedChildKey = encryptedChildKeyCandidate;
+        }
+      }
+    }
+    if (childKey) {
+      return new FireCryptQuery(this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order);
+    } else {
+      return new FireCryptQuery(this._originalRef[methodName].call(this._query), order);
+    }
+  }
+}
+
+function wrapQueryCallback(callback) {
+  if (!callback || callback.firecryptCallback) return;
+  const wrappedCallback = function (snap, previousChildKey) {
+    return callback.call(this, new FireCryptSnapshot(snap), previousChildKey);
+  };
+  wrappedCallback.firecryptCallback = wrappedCallback;
+  callback.firecryptCallback = wrappedCallback;
 }
 
 class FireCryptOnDisconnect {
@@ -470,187 +667,6 @@ class FireCryptReference {
       });
     };
   }
-}
-
-class FireCryptSnapshot {
-  constructor(snap) {
-    this._ref = decryptRef(snap.ref);
-    this._path = refToPath(this._ref);
-    this._snap = snap;
-
-    this._delegateSnapshot('exists');
-    this._delegateSnapshot('toJSON');
-    this._delegateSnapshot('hasChildren');
-    this._delegateSnapshot('numChildren');
-    this._delegateSnapshot('getPriority');
-  }
-
-  _delegateSnapshot(methodName) {
-    this[methodName] = function () {
-      return this._snap[methodName].apply(this._snap, arguments);
-    };
-  }
-
-  get key() {
-    return this._ref.key;
-  }
-
-  get ref() {
-    return new FireCryptReference(this._ref.ref);
-  }
-
-  val() {
-    return transformValue(this._path, this._snap.val(), decrypt);
-  }
-
-  child(childPath) {
-    return new FireCryptSnapshot(this._snap.child(childPath));
-  }
-
-  forEach(action) {
-    return this._snap.forEach(function (childSnap) {
-      return action(new FireCryptSnapshot(childSnap));
-    });
-  }
-
-  hasChild(childPath) {
-    childPath = encryptPath(childPath.split('/'), specForPath(this._path)).join('/');
-    return this._snap.hasChild(childPath);
-  }
-
-  exportVal() {
-    return transformValue(this._path, this._snap.exportVal(), decrypt);
-  }
-}
-
-class FireCryptQuery {
-  constructor(query, order, originalRef) {
-    this._query = query;
-    this._order = order || {};
-    this._originalRef = originalRef || query;
-  }
-
-  get ref() {
-    return new FireCryptReference(decryptRef(this._query.ref));
-  }
-
-  on(eventType, callback, cancelCallback, context) {
-    wrapQueryCallback(callback);
-    return this._originalRef.on.call(this._query, eventType, callback.firecryptCallback, cancelCallback, context);
-  }
-
-  off(eventType, callback, context) {
-    if (callback && callback.firecryptCallback) callback = callback.firecryptCallback;
-    return this._originalRef.off.call(this._query, eventType, callback, context);
-  }
-
-  once(eventType, successCallback, failureCallback, context) {
-    wrapQueryCallback(successCallback);
-    return this._originalRef.once.call(this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback, context).then(snap => {
-      return new FireCryptSnapshot(snap);
-    });
-  }
-
-  orderByChild(key) {
-    return this._orderBy('orderByChild', 'child', key);
-  }
-
-  orderByKey() {
-    return this._orderBy('orderByKey', 'key');
-  }
-
-  orderByValue() {
-    return this._orderBy('orderByValue', 'value');
-  }
-
-  orderByPriority() {
-    return this._orderBy('orderByPriority', 'priority');
-  }
-
-  startAt(value, key) {
-    this._checkCanSort(key !== undefined);
-    return this._delegate('startAt', arguments);
-  }
-
-  endAt(value, key) {
-    this._checkCanSort(key !== undefined);
-    return this._delegate('endAt', arguments);
-  }
-
-  equalTo(value, key) {
-    if (this._order[this._order.by + 'Encrypted']) {
-      value = encrypt(value, getType(value), this._order[this._order.by + 'Encrypted']);
-    }
-    if (key !== undefined && this._order.keyEncrypted) {
-      key = encrypt(key, 'string', this._order.keyEncrypted);
-    }
-    return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order);
-  }
-
-  limitToFirst() {
-    return this._delegate('limitToFirst', arguments);
-  }
-
-  limitToLast() {
-    return this._delegate('limitToLast', arguments);
-  }
-
-  limit() {
-    return this._delegate('limit', arguments);
-  }
-
-  _delegate(methodName, args) {
-    return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order);
-  }
-
-  _checkCanSort(hasExtraKey) {
-    if (this._order.by === 'key' ? this._order.keyEncrypted : this._order.valueEncrypted || hasExtraKey && this._order.keyEncrypted) {
-      throw new Error('Encrypted items cannot be ordered');
-    }
-  }
-
-  _orderBy(methodName, by, childKey) {
-    const def = specForPath(refToPath(this.ref));
-    const order = { by: by };
-
-    let encryptedChildKey;
-    if (def) {
-      const childPath = childKey && childKey.split('/');
-      for (const subKey in def) {
-        if (!def.hasOwnProperty(subKey)) continue;
-        const subDef = def[subKey];
-        if (subDef['.encrypt']) {
-          if (subDef['.encrypt'].key) order.keyEncrypted = subDef['.encrypt'].key;
-          if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
-        }
-        if (childKey) {
-          const childDef = specForPath(childPath, subDef);
-          if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
-            order.childEncrypted = childDef['.encrypt'].value;
-          }
-          const encryptedChildKeyCandidate = encryptPath(childPath, subDef).join('/');
-          if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
-            throw new Error('Incompatible encryption specifications for orderByChild("' + childKey + '")');
-          }
-          encryptedChildKey = encryptedChildKeyCandidate;
-        }
-      }
-    }
-    if (childKey) {
-      return new FireCryptQuery(this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order);
-    } else {
-      return new FireCryptQuery(this._originalRef[methodName].call(this._query), order);
-    }
-  }
-}
-
-function wrapQueryCallback(callback) {
-  if (!callback || callback.firecryptCallback) return;
-  const wrappedCallback = function (snap, previousChildKey) {
-    return callback.call(this, new FireCryptSnapshot(snap), previousChildKey);
-  };
-  wrappedCallback.firecryptCallback = wrappedCallback;
-  callback.firecryptCallback = wrappedCallback;
 }
 
 if (typeof require !== 'undefined') {

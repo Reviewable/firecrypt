@@ -12,10 +12,7 @@ CryptoJS.enc.Base64UrlSafe = {
 };
 
 import * as crypto from './crypto';
-import FireCryptQuery from './FireCryptQuery';
-import FireCryptSnapshot from './FireCryptSnapshot';
 import FireCryptReference from './FireCryptReference';
-import FireCryptOnDisconnect from './FireCryptOnDisconnect';
 
 export default class FireCrypt {
   constructor(db, options = {}, specification = {}) {
