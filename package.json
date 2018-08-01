@@ -27,8 +27,6 @@
   "dependencies": {
     "crypto-js": "^3.1.9-1",
     "cryptojs-extension": "pkaminski/cryptojs-extension",
-    "eslint": "^5.2.0",
-    "eslint-plugin-node": "^7.0.1",
     "serialized-lru-cache": "^3.1.0"
   },
   "devDependencies": {
