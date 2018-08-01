@@ -131,12 +131,12 @@ export default class FireCryptReference {
       if (typeof args[0] !== 'undefined') {
         const encryptedRef = crypto.encryptRef(pushedRef);
         const path = crypto.refToPath(pushedRef);
-      
+
         args[0] = crypto.transformValue(path, args[0], crypto.encrypt);
-  
+
         pushedRef.set.apply(encryptedRef, args);
       }
-      
+
       const decryptedPushedRef = new FireCryptReference(crypto.decryptRef(pushedRef));
       decryptedPushedRef.then = pushedRef.then;
       decryptedPushedRef.catch = pushedRef.catch;
@@ -145,7 +145,7 @@ export default class FireCryptReference {
       return decryptedPushedRef;
     };
   }
-  
+
   _interceptWrite(methodName, argIndex) {
     this[methodName] = function() {
       const encryptedRef = crypto.encryptRef(this._ref);
@@ -159,7 +159,7 @@ export default class FireCryptReference {
       return this._ref[methodName].apply(encryptedRef, args);
     };
   }
-  
+
   _interceptChildrenKeys() {
     this.childrenKeys = function() {
       const encryptedRef = crypto.encryptRef(this._ref);
@@ -178,7 +178,7 @@ export default class FireCryptReference {
       return new FireCryptOnDisconnect(encryptedRef, this._ref.onDisconnect.call(encryptedRef));
     };
   }
-  
+
   _interceptQuery(methodName) {
     this[methodName] = function() {
       const encryptedRef = crypto.encryptRef(this._ref);
