@@ -592,13 +592,24 @@ var FireCrypt = (function () {
 
     _interceptPush() {
       this.push = function () {
-        // push() delegates to set(), which will take care of encrypting the ref and the argument.
-        const pushedRef = this._ref.push.apply(this._ref, arguments);
-        const decryptedRef = new FireCryptReference(decryptRef(pushedRef));
-        decryptedRef.then = pushedRef.then;
-        decryptedRef.catch = pushedRef.catch;
-        if (pushedRef.finally) decryptedRef.finally = pushedRef.finally;
-        return decryptedRef;
+        const pushedRef = this._ref.push();
+
+        const args = Array.prototype.slice.call(arguments);
+        if (typeof args[0] !== 'undefined') {
+          const encryptedRef = encryptRef(pushedRef);
+          const path = refToPath(pushedRef);
+
+          args[0] = transformValue(path, args[0], encrypt);
+
+          pushedRef.set.apply(encryptedRef, args);
+        }
+
+        const decryptedPushedRef = new FireCryptReference(decryptRef(pushedRef));
+        decryptedPushedRef.then = pushedRef.then;
+        decryptedPushedRef.catch = pushedRef.catch;
+        if (pushedRef.finally) decryptedPushedRef.finally = pushedRef.finally;
+
+        return decryptedPushedRef;
       };
     }
 
