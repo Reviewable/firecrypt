@@ -38,8 +38,7 @@ export default class FireCrypt {
     options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
     options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
 
-    crypto.setEncryptStringFunction(crypto.throwNotSetUpError);
-    crypto.setDecryptStringFunction(crypto.throwNotSetUpError);
+    crypto.setStringEncryptionFunctions(crypto.throwNotSetUpError, crypto.throwNotSetUpError);
 
     if (typeof LRUCache === 'function') {
       crypto.setEncryptionCache(new LRUCache({
@@ -56,8 +55,7 @@ export default class FireCrypt {
         this.encryptionKeyCheckValue = setupAesSiv(options.key, options.keyCheckValue);
         break;
       case 'passthrough':
-        crypto.setEncryptStringFunction((str) => str);
-        crypto.setDecryptStringFunction((str) => str);
+        crypto.setStringEncryptionFunctions((str) => str, (str) => str);
         break;
       case 'none':
         break;
@@ -118,8 +116,7 @@ function setupAesSiv(key, checkValue) {
     return CryptoJS.enc.Utf8.stringify(result);
   };
 
-  crypto.setEncryptStringFunction(encryptString);
-  crypto.setDecryptStringFunction(decryptString);
+  crypto.setStringEncryptionFunctions(encryptString, decryptString);
 
   if (checkValue) decryptString(checkValue);
   return encryptString(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));

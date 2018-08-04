@@ -11,11 +11,8 @@ var FireCrypt = (function () {
     _spec = cleanSpecification(spec);
   }
 
-  function setEncryptStringFunction(encryptString) {
+  function setStringEncryptionFunctions(encryptString, decryptString) {
     _encryptString = encryptString;
-  }
-
-  function setDecryptStringFunction(decryptString) {
     _decryptString = decryptString;
   }
 
@@ -704,8 +701,7 @@ var FireCrypt = (function () {
       options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
       options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
 
-      setEncryptStringFunction(throwNotSetUpError);
-      setDecryptStringFunction(throwNotSetUpError);
+      setStringEncryptionFunctions(throwNotSetUpError, throwNotSetUpError);
 
       if (typeof LRUCache === 'function') {
         setEncryptionCache(new LRUCache({
@@ -722,8 +718,7 @@ var FireCrypt = (function () {
           this.encryptionKeyCheckValue = setupAesSiv(options.key, options.keyCheckValue);
           break;
         case 'passthrough':
-          setEncryptStringFunction(str => str);
-          setDecryptStringFunction(str => str);
+          setStringEncryptionFunctions(str => str, str => str);
           break;
         case 'none':
           break;
@@ -779,8 +774,7 @@ var FireCrypt = (function () {
       return CryptoJS.enc.Utf8.stringify(result);
     };
 
-    setEncryptStringFunction(encryptString);
-    setDecryptStringFunction(decryptString);
+    setStringEncryptionFunctions(encryptString, decryptString);
 
     if (checkValue) decryptString(checkValue);
     return encryptString(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));

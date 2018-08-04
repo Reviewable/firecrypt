@@ -8,11 +8,8 @@ export function setSpec(spec) {
   _spec = cleanSpecification(spec);
 }
 
-export function setEncryptStringFunction(encryptString) {
+export function setStringEncryptionFunctions(encryptString, decryptString) {
   _encryptString = encryptString;
-}
-
-export function setDecryptStringFunction(decryptString) {
   _decryptString = decryptString;
 }
 
