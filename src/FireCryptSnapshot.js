@@ -1,11 +1,12 @@
-import * as crypto from './crypto';
 import FireCryptReference from './FireCryptReference';
 
 export default class FireCryptSnapshot {
-  constructor(snap) {
+  constructor(snap, crypto) {
     this._ref = crypto.decryptRef(snap.ref);
     this._path = crypto.refToPath(this._ref);
     this._snap = snap;
+    this._crypto = crypto;
+
   }
 
   get key() {
@@ -13,20 +14,20 @@ export default class FireCryptSnapshot {
   }
 
   get ref() {
-    return new FireCryptReference(this._ref.ref);
+    return new FireCryptReference(this._ref.ref, this._crypto);
   }
 
   val() {
-    return crypto.transformValue(this._path, this._snap.val(), crypto.decrypt);
+    return this._crypto.transformValue(this._path, this._snap.val(), this._crypto.decrypt.bind(this._crypto));
   }
 
   child(childPath) {
-    return new FireCryptSnapshot(this._snap.child(childPath));
+    return new FireCryptSnapshot(this._snap.child(childPath), this._crypto);
   }
 
   forEach(action) {
-    return this._snap.forEach(function(childSnap) {
-      return action(new FireCryptSnapshot(childSnap));
+    return this._snap.forEach((childSnap) => {
+      return action(new FireCryptSnapshot(childSnap), this._crypto);
     });
   }
 
@@ -35,7 +36,7 @@ export default class FireCryptSnapshot {
   }
 
   hasChild(childPath) {
-    childPath = crypto.encryptPath(childPath.split('/'), crypto.specForPath(this._path)).join('/');
+    childPath = this._crypto.encryptPath(childPath.split('/'), this._crypto.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   }
 
@@ -49,6 +50,6 @@ export default class FireCryptSnapshot {
 
   toJSON() {
     const json = this._snap.toJSON.apply(this._snap, arguments);
-    return crypto.transformValue(this._path, json, crypto.decrypt);
+    return this._crypto.transformValue(this._path, json, this._crypto.decrypt.bind(this._crypto));
   }
 }
