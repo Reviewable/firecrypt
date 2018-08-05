@@ -82,24 +82,24 @@ export default class FireCrypt {
     return this._db.goOffline();
   }
 
-  ref(pathOrRef) {
-    if (typeof pathOrRef !== 'undefined') {
-      const pathOrRefIsNonemptyString = typeof pathOrRef === 'string' && pathOrRef !== '';
-      const pathOrRefIsNonNullObject = typeof pathOrRef === 'object' && pathOrRef !== null;
-      const pathOrRefIsFirebaseRef =
-        pathOrRefIsNonNullObject &&
-        typeof pathOrRef.ref === 'object' &&
-        typeof pathOrRef.ref.transaction !== 'function';
-
-      if (!pathOrRefIsNonemptyString && !pathOrRefIsFirebaseRef) {
-        throw new Error(
-          `Expected first argument passed to ref() to be a non-empty string or a Firebase Database
-          reference, but got "${pathOrRef}".`
-        );
-      }
+  ref(path) {
+    if (typeof path !== 'undefined' && typeof path !== 'string') {
+      throw new Error(
+        `Expected first argument passed to ref() to be undefined or a string, but got "${path}".`
+      );
     }
 
-    return new FireCryptReference(this._db.ref(pathOrRef));
+    return new FireCryptReference(this._db.ref(path));
+  }
+
+  refFromURL(url) {
+    if (typeof url !== 'string' || url.match(/^https:\/\/.*/g) === null) {
+      throw new Error(
+        `Expected first argument passed to refFromURL() to be a string URL, but got "${url}".`
+      );
+    }
+
+    return new FireCryptReference(this._db.refFromURL(path));
   }
 }
 

@@ -7,22 +7,10 @@ export default class FireCryptReference {
   constructor(ref) {
     this._ref = ref;
 
-    this._interceptPush();
-    this._interceptTransaction();
-    this._interceptOnDisconnect();
-
     [
       'on', 'off', 'once', 'orderByChild', 'orderByKey', 'orderByValue', 'startAt', 'endAt',
       'equalTo', 'limitToFirst', 'limitToLast'
     ].forEach((methodName) => {this._interceptQuery(methodName);});
-
-    this._interceptWrite('set', 0);
-    this._interceptWrite('remove');
-    this._interceptWrite('update', 0);
-
-    if (ref.childrenKeys) {
-      this._interceptChildrenKeys(ref);
-    }
   }
 
   /**
@@ -123,60 +111,68 @@ export default class FireCryptReference {
     return decodeURIComponent(this._ref.toString());
   }
 
-  _interceptPush() {
-    this.push = function() {
-      const pushedRef = this._ref.push();
+  push() {
+    const pushedRef = this._ref.push();
 
-      const args = Array.prototype.slice.call(arguments);
-      if (typeof args[0] !== 'undefined') {
-        const encryptedRef = crypto.encryptRef(pushedRef);
-        const path = crypto.refToPath(pushedRef);
+    const args = Array.prototype.slice.call(arguments);
+    if (typeof args[0] !== 'undefined') {
+      const encryptedRef = crypto.encryptRef(pushedRef);
+      const path = crypto.refToPath(pushedRef);
 
-        args[0] = crypto.transformValue(path, args[0], crypto.encrypt);
+      args[0] = crypto.transformValue(path, args[0], crypto.encrypt);
 
-        pushedRef.set.apply(encryptedRef, args);
+      pushedRef.set.apply(encryptedRef, args);
+    }
+
+    const decryptedPushedRef = new FireCryptReference(crypto.decryptRef(pushedRef));
+    decryptedPushedRef.then = pushedRef.then;
+    decryptedPushedRef.catch = pushedRef.catch;
+    if (pushedRef.finally) decryptedPushedRef.finally = pushedRef.finally;
+
+    return decryptedPushedRef;
+  }
+
+  _interceptWrite(methodName, originalArguments, argIndex) {
+    const encryptedRef = crypto.encryptRef(this._ref);
+    const path = crypto.refToPath(this._ref);
+
+    const args = Array.prototype.slice.call(originalArguments);
+    if (argIndex >= 0 && argIndex < args.length) {
+      args[argIndex] = crypto.transformValue(path, args[argIndex], crypto.encrypt);
+    }
+
+    return this._ref[methodName].apply(encryptedRef, args);
+  }
+
+  set() {
+    return this._interceptWrite('set', arguments, 0);
+  }
+
+  remove() {
+    return this._interceptWrite('remove', arguments);
+  }
+
+  update() {
+    return this._interceptWrite('update', arguments, 0);
+  }
+
+  childrenKeys() {
+    if (!this._ref.childrenKeys) {
+      throw new Error('childrenKeys() is not implemented.');
+    }
+
+    const encryptedRef = crypto.encryptRef(this._ref);
+    return this._ref.childrenKeys.apply(encryptedRef, arguments).then((keys) => {
+      if (!keys.some((key) => /\x91/.test(key))) {
+        return keys;
       }
-
-      const decryptedPushedRef = new FireCryptReference(crypto.decryptRef(pushedRef));
-      decryptedPushedRef.then = pushedRef.then;
-      decryptedPushedRef.catch = pushedRef.catch;
-      if (pushedRef.finally) decryptedPushedRef.finally = pushedRef.finally;
-
-      return decryptedPushedRef;
-    };
+      return keys.map(crypto.decrypt);
+    });
   }
 
-  _interceptWrite(methodName, argIndex) {
-    this[methodName] = function() {
-      const encryptedRef = crypto.encryptRef(this._ref);
-      const path = crypto.refToPath(this._ref);
-  
-      const args = Array.prototype.slice.call(arguments);
-      if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = crypto.transformValue(path, args[argIndex], crypto.encrypt);
-      }
-  
-      return this._ref[methodName].apply(encryptedRef, args);
-    };
-  }
-
-  _interceptChildrenKeys() {
-    this.childrenKeys = function() {
-      const encryptedRef = crypto.encryptRef(this._ref);
-      return this._ref.childrenKeys.apply(encryptedRef, arguments).then((keys) => {
-        if (!keys.some((key) => /\x91/.test(key))) {
-          return keys;
-        }
-        return keys.map(crypto.decrypt);
-      });
-    };
-  }
-
-  _interceptOnDisconnect() {
-    this.onDisconnect = function() {
-      const encryptedRef = crypto.encryptRef(this._ref);
-      return new FireCryptOnDisconnect(encryptedRef, this._ref.onDisconnect.call(encryptedRef));
-    };
+  onDisconnect() {
+    const encryptedRef = crypto.encryptRef(this._ref);
+    return new FireCryptOnDisconnect(encryptedRef, this._ref.onDisconnect.call(encryptedRef));
   }
 
   _interceptQuery(methodName) {
@@ -187,29 +183,27 @@ export default class FireCryptReference {
     }
   }
 
-  _interceptTransaction() {
-    this.transaction = function() {
-      const encryptedRef = crypto.encryptRef(this._ref);
-      const path = crypto.refToPath(this._ref);
+  transaction() {
+    const encryptedRef = crypto.encryptRef(this._ref);
+    const path = crypto.refToPath(this._ref);
 
-      const args = Array.prototype.slice.call(arguments);
-      const originalCompute = args[0];
-      args[0] = originalCompute && function(value) {
-        value = crypto.transformValue(path, value, crypto.decrypt);
-        value = originalCompute(value);
-        value = crypto.transformValue(path, value, crypto.encrypt);
-        return value;
-      };
-      if (args.length > 1) {
-        const originalOnComplete = args[1];
-        args[1] = originalOnComplete && function(error, committed, snapshot) {
-          return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot));
-        };
-      }
-      return this._ref.transaction.apply(encryptedRef, args).then(function(result) {
-        result.snapshot = result.snapshot && new FireCryptSnapshot(result.snapshot);
-        return result;
-      });
+    const args = Array.prototype.slice.call(arguments);
+    const originalCompute = args[0];
+    args[0] = originalCompute && function(value) {
+      value = crypto.transformValue(path, value, crypto.decrypt);
+      value = originalCompute(value);
+      value = crypto.transformValue(path, value, crypto.encrypt);
+      return value;
     };
-  }
+    if (args.length > 1) {
+      const originalOnComplete = args[1];
+      args[1] = originalOnComplete && function(error, committed, snapshot) {
+        return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot));
+      };
+    }
+    return this._ref.transaction.apply(encryptedRef, args).then(function(result) {
+      result.snapshot = result.snapshot && new FireCryptSnapshot(result.snapshot);
+      return result;
+    });
+  };
 }

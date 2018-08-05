@@ -6,17 +6,6 @@ export default class FireCryptSnapshot {
     this._ref = crypto.decryptRef(snap.ref);
     this._path = crypto.refToPath(this._ref);
     this._snap = snap;
-
-    this._delegateSnapshot('exists');
-    this._delegateSnapshot('toJSON');
-    this._delegateSnapshot('hasChildren');
-    this._delegateSnapshot('numChildren');
-  }
-
-  _delegateSnapshot(methodName) {
-    this[methodName] = function() {
-      return this._snap[methodName].apply(this._snap, arguments);
-    };
   }
 
   get key() {
@@ -41,12 +30,25 @@ export default class FireCryptSnapshot {
     });
   }
 
+  exists() {
+    return this._snap.exists.apply(this._snap, arguments)
+  }
+
   hasChild(childPath) {
     childPath = crypto.encryptPath(childPath.split('/'), crypto.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   }
 
-  exportVal() {
-    return crypto.transformValue(this._path, this._snap.exportVal(), crypto.decrypt);
+  hasChildren() {
+    return this._snap.hasChildren.apply(this._snap, arguments)
+  }
+
+  numChildren() {
+    return this._snap.numChildren.apply(this._snap, arguments)
+  }
+
+  toJSON() {
+    const json = this._snap.toJSON.apply(this._snap, arguments);
+    return crypto.transformValue(this._path, json, crypto.decrypt);
   }
 }

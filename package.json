@@ -29,6 +29,10 @@
     "cryptojs-extension": "pkaminski/cryptojs-extension",
     "serialized-lru-cache": "^3.1.0"
   },
+  "peerDependencies": {
+    "firebase": "5.x.x",
+    "firebase-admin": "5.x.x"
+  },
   "devDependencies": {
     "babel-core": "^6.26.3",
     "rollup": "^0.63.4",
