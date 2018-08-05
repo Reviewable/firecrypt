@@ -92,7 +92,7 @@ export default class FireCrypt {
 
     if (!pathOrRefIsNonemptyString && !pathOrRefIsFirebaseRef) {
       throw new Error(
-        `Expected first argument passed to ref()to be a non-empty string or a Firebase Database
+        `Expected first argument passed to ref() to be a non-empty string or a Firebase Database
         reference, but got "${pathOrRef}".`
       );
     }

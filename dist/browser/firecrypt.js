@@ -751,7 +751,7 @@ var FireCrypt = (function () {
       const pathOrRefIsFirebaseRef = pathOrRefIsNonNullObject && typeof pathOrRef.ref === 'object' && typeof pathOrRef.ref.transaction !== 'function';
 
       if (!pathOrRefIsNonemptyString && !pathOrRefIsFirebaseRef) {
-        throw new Error(`Expected first argument passed to ref()to be a non-empty string or a Firebase Database
+        throw new Error(`Expected first argument passed to ref() to be a non-empty string or a Firebase Database
         reference, but got "${pathOrRef}".`);
       }
 
