@@ -31,7 +31,10 @@
   },
   "peerDependencies": {
     "firebase": "5.x.x",
-    "firebase-admin": "5.x.x"
+    "firebase-admin": "5.x.x || 6.x.x"
+  },
+  "optionalDependencies": {
+    "firebase-childrenkeys": "^1.1.0"
   },
   "devDependencies": {
     "babel-core": "^6.26.3",

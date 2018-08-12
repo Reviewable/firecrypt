@@ -483,6 +483,13 @@ class FireCryptOnDisconnect {
   }
 }
 
+let childrenKeysFromLib;
+try {
+  childrenKeysFromLib = require('firebase-childrenkeys');
+} catch (e) {
+  // Library is optional, so ignore any errors from failure to load it.
+}
+
 class FireCryptReference {
   constructor(ref, crypto) {
     this._ref = ref;
@@ -636,12 +643,15 @@ class FireCryptReference {
   }
 
   childrenKeys() {
-    if (!this._ref.childrenKeys) {
-      throw new Error('childrenKeys() is not implemented.');
+    const originalMethod = this._ref.childrenKeys || childrenKeysFromLib;
+
+    if (typeof originalMethod !== 'function') {
+      throw new Error(`childrenKeys() is not implemented. You must either provide a Firebase Database Reference
+        which implements childrenKeys() or npm install the firebase-children keys libary.`);
     }
 
     const encryptedRef = this._crypto.encryptRef(this._ref);
-    return this._ref.childrenKeys.apply(encryptedRef, arguments).then(keys => {
+    return originalMethod.apply(encryptedRef, [encryptedRef, ...arguments]).then(keys => {
       if (!keys.some(key => /\x91/.test(key))) {
         return keys;
       }
