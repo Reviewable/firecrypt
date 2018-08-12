@@ -11,7 +11,7 @@ export default class FireCryptOnDisconnect {
     this[methodName] = function() {
       const args = Array.prototype.slice.call(originalArguments);
       if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = self._crypto.transformValue(self._path, args[argIndex], self._crypto.encrypt.bind(self._crypto));
+        args[argIndex] = self._crypto.transformValue(self._path, args[argIndex], 'encrypt');
       }
 
       return self._originalOnDisconnect[methodName].apply(self._originalOnDisconnect, args);

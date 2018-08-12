@@ -18,7 +18,7 @@ export default class FireCryptSnapshot {
   }
 
   val() {
-    return this._crypto.transformValue(this._path, this._snap.val(), this._crypto.decrypt.bind(this._crypto));
+    return this._crypto.transformValue(this._path, this._snap.val(), 'decrypt');
   }
 
   child(childPath) {
@@ -50,6 +50,6 @@ export default class FireCryptSnapshot {
 
   toJSON() {
     const json = this._snap.toJSON.apply(this._snap, arguments);
-    return this._crypto.transformValue(this._path, json, this._crypto.decrypt.bind(this._crypto));
+    return this._crypto.transformValue(this._path, json, 'decrypt');
   }
 }
