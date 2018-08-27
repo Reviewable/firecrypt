@@ -734,11 +734,39 @@ var FireCrypt = (function () {
     }
   }
 
+  const patchFirebaseDatabaseApi = fb => {
+    const originalDb = fb.database;
+    Object.defineProperty(fb, 'database', {
+      value: () => new FireCrypt(originalDb.call(fb))
+    });
+
+    const patchedApps = [];
+
+    const originalApp = fb.app;
+    Object.defineProperty(fb, 'app', {
+      value: () => {
+        const app = originalApp.call(fb);
+        if (patchedApps.indexOf(app.name) === -1) {
+          patchedApps.push(app.name);
+          const fc = new FireCrypt(originalDb.call(fb));
+          app.database = () => fc;
+        }
+        return app;
+      }
+    });
+  };
+
   if (typeof require !== 'undefined') {
     if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
     if (typeof CryptoJS === 'undefined') global.CryptoJS = require('crypto-js/core');
     require('crypto-js/enc-base64');
     require('cryptojs-extension/build_node/siv');
+    const admin = require('firebase-admin');
+    patchFirebaseDatabaseApi(admin);
+  } else if (typeof firebase !== 'undefined') {
+    patchFirebaseDatabaseApi(firebase);
+  } else {
+    throw new Error('The Firebase web SDK must be loaded before FireCrypt.');
   }
 
   CryptoJS.enc.Base64UrlSafe = {
@@ -787,7 +815,6 @@ var FireCrypt = (function () {
     }
 
     get app() {
-      this._ensureEncryptionConfigured();
       return this._db.app;
     }
 
