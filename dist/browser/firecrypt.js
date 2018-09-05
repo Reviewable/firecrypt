@@ -1,4 +1,4 @@
-var FireCrypt = (function () {
+(function () {
   'use strict';
 
   class Crypto {
@@ -735,25 +735,28 @@ var FireCrypt = (function () {
   }
 
   const patchFirebaseDatabaseApi = fb => {
-    const originalDb = fb.database;
-    Object.defineProperty(fb, 'database', {
-      value: () => new FireCrypt(originalDb.call(fb))
-    });
-
-    const patchedApps = [];
-
-    const originalApp = fb.app;
-    Object.defineProperty(fb, 'app', {
-      value: () => {
-        const app = originalApp.call(fb);
-        if (patchedApps.indexOf(app.name) === -1) {
-          patchedApps.push(app.name);
-          const fc = new FireCrypt(originalDb.call(fb));
-          app.database = () => fc;
-        }
+    // We want to wrap all instances of the Firebase database() with FireCrypt.  These are always
+    // eventually instantiated via an App's database() function, so we'd like to override that.
+    // However, we can't get at the App prototype directly so instead we patch initializeApp(),
+    // which must be called for an app instance to become available, and patch the App prototype
+    // on the first call.  Once the prototype is patched, we can restore the original initializeApp.
+    const originalInitializeApp = fb.initializeApp;
+    Object.defineProperty(fb, 'initializeApp', { value: function () {
+        const app = originalInitializeApp.apply(this, arguments);
+        const originalDatabase = app.constructor.prototype.database;
+        Object.defineProperty(app.constructor.prototype, 'database', { value: function () {
+            // The database() call caches databases by URL and can return the same instance on separate
+            // calls.  Ensure that there's a 1-to-1 correspondance between database instances and
+            // FireCrypt wrappers by associating a wrapper with its underlying database.
+            const db = originalDatabase.apply(this, arguments);
+            if (!db.firecrypt) {
+              Object.defineProperty(db, 'firecrypt', { value: new FireCrypt(db) });
+            }
+            return db.firecrypt;
+          } });
+        Object.defineProperty(fb, 'initializeApp', { value: originalInitializeApp });
         return app;
-      }
-    });
+      }, configurable: true });
   };
 
   if (typeof require !== 'undefined') {
@@ -766,7 +769,7 @@ var FireCrypt = (function () {
   } else if (typeof firebase !== 'undefined') {
     patchFirebaseDatabaseApi(firebase);
   } else {
-    throw new Error('The Firebase web SDK must be loaded before FireCrypt.');
+    throw new Error('The Firebase web client SDK must be loaded before FireCrypt.');
   }
 
   CryptoJS.enc.Base64UrlSafe = {
@@ -880,8 +883,6 @@ var FireCrypt = (function () {
       return new FireCryptReference(this._db.refFromURL(path), this._crypto);
     }
   }
-
-  return FireCrypt;
 
 }());
 //# sourceMappingURL=firecrypt.js.map
