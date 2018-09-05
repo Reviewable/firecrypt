@@ -72,7 +72,7 @@ export default class FireCryptQuery {
     if (key !== undefined && this._order.keyEncrypted) {
       key = this._crypto.encrypt(key, 'string', this._order.keyEncrypted);
     }
-    return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order, this._crypto);
+    return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order, this._originalRef, this._crypto);
   }
 
   limitToFirst() {
@@ -88,7 +88,7 @@ export default class FireCryptQuery {
   }
 
   _delegate(methodName, args) {
-    return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order, this._crypto);
+    return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order, this._originalRef, this._crypto);
   }
 
   _checkCanSort(hasExtraKey) {
@@ -129,9 +129,9 @@ export default class FireCryptQuery {
     }
     if (childKey) {
       return new FireCryptQuery(
-        this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order, this._crypto);
+        this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order, this._originalRef, this._crypto);
     } else {
-      return new FireCryptQuery(this._originalRef[methodName].call(this._query), order, this._crypto);
+      return new FireCryptQuery(this._originalRef[methodName].call(this._query), order, this._originalRef, this._crypto);
     }
   }
 }

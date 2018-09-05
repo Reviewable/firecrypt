@@ -244,7 +244,7 @@ export default class FireCryptReference {
     if (args.length > 1) {
       const originalOnComplete = args[1];
       args[1] = originalOnComplete && ((error, committed, snapshot) => {
-        return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot));
+        return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot, this._crypto));
       });
     }
     return this._ref.transaction.apply(encryptedRef, args).then((result) => {

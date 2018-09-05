@@ -135,7 +135,7 @@
             var keyParts = key.split('/');
             subDef = def;
             for (i = 0; i < keyParts.length; i++) {
-              if (transform === decrypt) {
+              if (transform === this.decrypt) {
                 keyParts[i] = this.decrypt(keyParts[i]);
                 subDef = subDef && (subDef[keyParts[i]] || subDef.$);
               } else {
@@ -387,7 +387,7 @@
       if (key !== undefined && this._order.keyEncrypted) {
         key = this._crypto.encrypt(key, 'string', this._order.keyEncrypted);
       }
-      return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order, this._crypto);
+      return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order, this._originalRef, this._crypto);
     }
 
     limitToFirst() {
@@ -403,7 +403,7 @@
     }
 
     _delegate(methodName, args) {
-      return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order, this._crypto);
+      return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order, this._originalRef, this._crypto);
     }
 
     _checkCanSort(hasExtraKey) {
@@ -440,9 +440,9 @@
         }
       }
       if (childKey) {
-        return new FireCryptQuery(this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order, this._crypto);
+        return new FireCryptQuery(this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order, this._originalRef, this._crypto);
       } else {
-        return new FireCryptQuery(this._originalRef[methodName].call(this._query), order, this._crypto);
+        return new FireCryptQuery(this._originalRef[methodName].call(this._query), order, this._originalRef, this._crypto);
       }
     }
   }
@@ -724,7 +724,7 @@
       if (args.length > 1) {
         const originalOnComplete = args[1];
         args[1] = originalOnComplete && ((error, committed, snapshot) => {
-          return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot));
+          return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot, this._crypto));
         });
       }
       return this._ref.transaction.apply(encryptedRef, args).then(result => {

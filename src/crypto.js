@@ -132,7 +132,7 @@ export default class Crypto {
           var keyParts = key.split('/');
           subDef = def;
           for (i = 0; i < keyParts.length; i++) {
-            if (transform === decrypt) {
+            if (transform === this.decrypt) {
               keyParts[i] = this.decrypt(keyParts[i]);
               subDef = subDef && (subDef[keyParts[i]] || subDef.$);
             } else {
