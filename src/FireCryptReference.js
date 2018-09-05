@@ -133,7 +133,7 @@ export default class FireCryptReference {
 
   push() {
     const pushedRef = this.child(this._ref.push().key);
-    
+
     let promise;
     if (typeof arguments[0] === 'undefined') {
       // A bare pushed ref should also be thennable.
@@ -208,11 +208,11 @@ export default class FireCryptReference {
   orderByValue() {
     return this._interceptQuery('orderByValue', arguments);
   }
-  
+
   startAt() {
     return this._interceptQuery('startAt', arguments);
   }
-  
+
   endAt() {
     return this._interceptQuery('endAt', arguments);
   }
