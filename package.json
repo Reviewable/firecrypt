@@ -27,7 +27,6 @@
   "dependencies": {
     "crypto-js": "^3.1.9-1",
     "cryptojs-extension": "pkaminski/cryptojs-extension",
-    "firebase-admin": "^6.0.0",
     "serialized-lru-cache": "^3.1.0"
   },
   "peerDependencies": {
