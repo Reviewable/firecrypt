@@ -1,55 +1,55 @@
-import * as crypto from './crypto';
+import FireCryptReference from './FireCryptReference';
 
 export default class FireCryptSnapshot {
-  constructor(snap) {
-    this._ref = crypto.decryptRef(snap.ref());
+  constructor(snap, crypto) {
+    this._ref = crypto.decryptRef(snap.ref);
     this._path = crypto.refToPath(this._ref);
     this._snap = snap;
+    this._crypto = crypto;
 
-    this._delegateSnapshot('exists');
-    this._delegateSnapshot('hasChildren');
-    this._delegateSnapshot('numChildren');
-    this._delegateSnapshot('getPriority');
   }
 
-  _delegateSnapshot(methodName) {
-    this[methodName] = function() {
-      return this._snap[methodName].apply(this._snap, arguments);
-    };
+  get key() {
+    return this._ref.key;
+  }
+
+  get ref() {
+    return new FireCryptReference(this._ref.ref, this._crypto);
   }
 
   val() {
-    return crypto.transformValue(this._path, this._snap.val(), crypto.decrypt);
+    return this._crypto.transformValue(this._path, this._snap.val(), 'decrypt');
   }
 
   child(childPath) {
-    return new FireCryptSnapshot(this._snap.child(childPath));
+    return new FireCryptSnapshot(this._snap.child(childPath), this._crypto);
   }
 
   forEach(action) {
-    return this._snap.forEach(function(childSnap) {
-      return action(new FireCryptSnapshot(childSnap));
+    return this._snap.forEach((childSnap) => {
+      return action(new FireCryptSnapshot(childSnap), this._crypto);
     });
   }
 
+  exists() {
+    return this._snap.exists.apply(this._snap, arguments)
+  }
+
   hasChild(childPath) {
-    childPath = crypto.encryptPath(childPath.split('/'), crypto.specForPath(this._path)).join('/');
+    childPath = this._crypto.encryptPath(childPath.split('/'), this._crypto.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   }
 
-  key() {
-    return this._ref.key();
+  hasChildren() {
+    return this._snap.hasChildren.apply(this._snap, arguments)
   }
-  
-  name() {
-    return this._ref.name();
+
+  numChildren() {
+    return this._snap.numChildren.apply(this._snap, arguments)
   }
-  
-  ref() {
-    return this._ref;
-  }
-  
-  exportVal() {
-    return crypto.transformValue(this._path, this._snap.exportVal(), crypto.decrypt);
+
+  toJSON() {
+    const json = this._snap.toJSON.apply(this._snap, arguments);
+    return this._crypto.transformValue(this._path, json, 'decrypt');
   }
 }

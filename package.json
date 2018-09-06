@@ -27,8 +27,14 @@
   "dependencies": {
     "crypto-js": "^3.1.9-1",
     "cryptojs-extension": "pkaminski/cryptojs-extension",
-    "firebase": "^2.4.2",
     "serialized-lru-cache": "^3.1.0"
+  },
+  "peerDependencies": {
+    "firebase": "5.x.x",
+    "firebase-admin": "5.x.x || 6.x.x"
+  },
+  "optionalDependencies": {
+    "firebase-childrenkeys": "^1.1.0"
   },
   "devDependencies": {
     "babel-core": "^6.26.3",
