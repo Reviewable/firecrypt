@@ -83,10 +83,6 @@ export default class FireCryptQuery {
     return this._delegate('limitToLast', arguments);
   }
 
-  limit() {
-    return this._delegate('limit', arguments);
-  }
-
   _delegate(methodName, args) {
     return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order, this._originalRef, this._crypto);
   }
