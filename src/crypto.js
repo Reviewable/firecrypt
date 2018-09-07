@@ -194,7 +194,7 @@ export default class Crypto {
           'Can\'t encrypt as value doesn\'t match pattern [' + pattern + ']: ' + value);
       }
       var i = 0;
-      result = pattern.replace(/[#\.]/g, function(placeholder) {
+      result = pattern.replace(/[#\.]/g, (placeholder) => {
         var part = match[++i];
         if (placeholder === '#') part = this.encryptValue(part, 'string');
         return part;
@@ -238,7 +238,7 @@ export default class Crypto {
           throw new Error('Invalid encrypted value type code: ' + match[1]);
       }
     } else {
-      result = value.replace(/\x91(.)([^\x92]*)\x92/g, function(match, typeCode, encryptedString) {
+      result = value.replace(/\x91(.)([^\x92]*)\x92/g, (match, typeCode, encryptedString) => {
         if (typeCode !== 'S') throw new Error('Invalid multi-segment encrypted value: ' + typeCode);
         return this._decryptString(encryptedString);
       });
