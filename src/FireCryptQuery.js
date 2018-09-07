@@ -11,8 +11,9 @@ export default class FireCryptQuery {
 
   _wrapQueryCallback(callback) {
     if (!callback || callback.firecryptCallback) return;
-    const wrappedCallback = (snap, previousChildKey) => {
-      return callback.call(this, new FireCryptSnapshot(snap, this._crypto), previousChildKey, this._crypto);
+    const self = this;
+    const wrappedCallback = function (snap, previousChildKey) {
+      return callback.call(this, new FireCryptSnapshot(snap, self._crypto), previousChildKey, self._crypto);
     };
     wrappedCallback.firecryptCallback = wrappedCallback;
     callback.firecryptCallback = wrappedCallback;
