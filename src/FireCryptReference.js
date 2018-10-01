@@ -99,12 +99,11 @@ export default class FireCryptReference {
   }
 
   /**
-   * Returns the Database instance associated with this reference.
-   * @return {admin.database.Database|firebase.databaseDatabase} The Database instance associated
-   *     with this reference.
+   * Returns the FireCrypt instance associated with this reference.
+   * @return {FireCrypt} The FireCrypt instance associated with this reference.
    */
   get database() {
-    return this._ref.ref.database;
+    return this._ref.ref.database.firecrypt;
   }
 
   /**

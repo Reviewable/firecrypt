@@ -577,6 +577,14 @@ class FireCryptReference {
   }
 
   /**
+   * Returns the FireCrypt instance associated with this reference.
+   * @return {FireCrypt} The FireCrypt instance associated with this reference.
+   */
+  get database() {
+    return this._ref.ref.database.firecrypt;
+  }
+
+  /**
    * Creates a new FireCryptReference object on a child of this one.
    * @param  {string} path The path to the desired child, relative to this reference.
    * @return {FireCryptReference} The child reference.
