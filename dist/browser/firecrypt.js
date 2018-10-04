@@ -855,6 +855,10 @@
           throw new Error('Unknown encryption algorithm "' + options.algorithm + '".');
       }
 
+      // Make the encryption key check value available off of this FireCrypt instance and therefore
+      // off of admin.database().
+      this.encryptionKeyCheckValue = result;
+
       return result;
     }
 
