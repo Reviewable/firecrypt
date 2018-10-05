@@ -12,8 +12,9 @@ export default class FireCryptQuery {
   _wrapQueryCallback(callback) {
     if (!callback || callback.firecryptCallback) return;
     const self = this;
-    const wrappedCallback = function (snap, previousChildKey) {
-      return callback.call(this, new FireCryptSnapshot(snap, self._crypto), previousChildKey, self._crypto);
+    const wrappedCallback = function(snap, previousChildKey) {
+      return callback.call(  // eslint-disable-next-line no-invalid-this
+        this, new FireCryptSnapshot(snap, self._crypto), previousChildKey, self._crypto);
     };
     wrappedCallback.firecryptCallback = wrappedCallback;
     callback.firecryptCallback = wrappedCallback;
@@ -43,7 +44,7 @@ export default class FireCryptQuery {
       return new FireCryptSnapshot(snap, this._crypto);
     });
   }
-  
+
   orderByChild(key) {
     return this._orderBy('orderByChild', 'child', key);
   }
@@ -68,12 +69,16 @@ export default class FireCryptQuery {
 
   equalTo(value, key) {
     if (this._order[this._order.by + 'Encrypted']) {
-      value = this._crypto.encrypt(value, this._crypto.getType(value), this._order[this._order.by + 'Encrypted']);
+      value = this._crypto.encrypt(
+        value, this._crypto.getType(value), this._order[this._order.by + 'Encrypted']);
     }
     if (key !== undefined && this._order.keyEncrypted) {
       key = this._crypto.encrypt(key, 'string', this._order.keyEncrypted);
     }
-    return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order, this._originalRef, this._crypto);
+    return new FireCryptQuery(
+      this._originalRef.equalTo.call(this._query, value, key), this._order, this._originalRef,
+      this._crypto
+    );
   }
 
   limitToFirst() {
@@ -85,20 +90,22 @@ export default class FireCryptQuery {
   }
 
   _delegate(methodName, args) {
-    return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order, this._originalRef, this._crypto);
+    return new FireCryptQuery(
+      this._originalRef[methodName].apply(this._query, args), this._order, this._originalRef,
+      this._crypto
+    );
   }
 
   _checkCanSort(hasExtraKey) {
-    if (this._order.by === 'key' ?
-        this._order.keyEncrypted :
-        this._order.valueEncrypted || hasExtraKey && this._order.keyEncrypted) {
-      throw new Error('Encrypted items cannot be ordered');
-    }
+    const orderedAndEncrypted = this._order.by === 'key' ?
+      this._order.keyEncrypted :
+      this._order.valueEncrypted || hasExtraKey && this._order.keyEncrypted;
+    if (orderedAndEncrypted) throw new Error('Encrypted items cannot be ordered');
   }
 
   _orderBy(methodName, by, childKey) {
     const def = this._crypto.specForPath(this._crypto.refToPath(this.ref));
-    const order = {by: by}
+    const order = {by};
 
     let encryptedChildKey;
     if (def) {
@@ -126,9 +133,12 @@ export default class FireCryptQuery {
     }
     if (childKey) {
       return new FireCryptQuery(
-        this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order, this._originalRef, this._crypto);
-    } else {
-      return new FireCryptQuery(this._originalRef[methodName].call(this._query), order, this._originalRef, this._crypto);
+        this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order,
+        this._originalRef, this._crypto
+      );
     }
+    return new FireCryptQuery(
+      this._originalRef[methodName].call(this._query), order, this._originalRef, this._crypto
+    );
   }
 }

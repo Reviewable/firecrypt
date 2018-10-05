@@ -6,7 +6,6 @@ export default class FireCryptSnapshot {
     this._path = crypto.refToPath(this._ref);
     this._snap = snap;
     this._crypto = crypto;
-
   }
 
   get key() {
@@ -32,20 +31,21 @@ export default class FireCryptSnapshot {
   }
 
   exists() {
-    return this._snap.exists.apply(this._snap, arguments)
+    return this._snap.exists.apply(this._snap, arguments);
   }
 
   hasChild(childPath) {
-    childPath = this._crypto.encryptPath(childPath.split('/'), this._crypto.specForPath(this._path)).join('/');
+    childPath = this._crypto.encryptPath(
+      childPath.split('/'), this._crypto.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   }
 
   hasChildren() {
-    return this._snap.hasChildren.apply(this._snap, arguments)
+    return this._snap.hasChildren.apply(this._snap, arguments);
   }
 
   numChildren() {
-    return this._snap.numChildren.apply(this._snap, arguments)
+    return this._snap.numChildren.apply(this._snap, arguments);
   }
 
   toJSON() {

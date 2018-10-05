@@ -19,20 +19,19 @@ export default class Crypto {
   }
 
   _cleanSpecification(def, path) {
-    var keys = Object.keys(def);
-    for (var i = 0; i < keys.length; i++) {
-      var key = keys[i];
+    const keys = Object.keys(def);
+    for (const key of keys) {
       if (key === '.encrypt') {
-        var encryptKeys = Object.keys(def[key]);
-        for (var j = 0; j < encryptKeys.length; j++) {
-          var encryptKey = encryptKeys[j];
+        const encryptKeys = Object.keys(def[key]);
+        for (const encryptKey of encryptKeys) {
           if (encryptKey !== 'key' && encryptKey !== 'value' && encryptKey !== 'few') {
-            throw new Error('Illegal .encrypt subkey: ' + encryptKeys[j]);
+            throw new Error(`Illegal .encrypt subkey: ${encryptKey}`);
           }
         }
       } else {
-        if (/[\x00-\x1f\x7f\x91\x92\.#\[\]/]/.test(key) || /[$]/.test(key.slice(1))) {
-          throw new Error('Illegal character in specification key: ' + key);
+        // eslint-disable-next-line no-control-regex
+        if (/[\x00-\x1f\x7f\x91\x92.#[\]/]/.test(key) || /[$]/.test(key.slice(1))) {
+          throw new Error(`Illegal character in specification key: ${key}`);
         }
         this._cleanSpecification(def[key], (path || '') + '/' + key);
       }
@@ -52,7 +51,7 @@ export default class Crypto {
   }
 
   _throwNotSetUpError() {
-    var e = new Error('Encryption not set up');
+    const e = new Error('Encryption not set up');
     e.firecrypt = 'NO_KEY';
     throw e;
   }
@@ -69,7 +68,7 @@ export default class Crypto {
   encryptPath(path, def) {
     def = def || this._spec.rules;
     path = path.slice();
-    for (var i = 0; i < path.length; i++) {
+    for (let i = 0; i < path.length; i++) {
       def = def[path[i]] || def.$;
       if (!def) break;
       if (def['.encrypt'] && def['.encrypt'].key) {
@@ -80,15 +79,15 @@ export default class Crypto {
   }
 
   encryptRef(ref, path) {
-    var encryptedPath = this.encryptPath(path || this.refToPath(ref));
+    const encryptedPath = this.encryptPath(path || this.refToPath(ref));
     return encryptedPath.length ? ref.root.child(encryptedPath.join('/')) : ref.root;
   }
 
   decryptRef(ref) {
-    var path = this.refToPath(ref, true);
-    var changed = false;
-    for (var i = 0; i < path.length; i++) {
-      var decryptedPathSegment = this.decrypt(path[i]);
+    const path = this.refToPath(ref, true);
+    let changed = false;
+    for (let i = 0; i < path.length; i++) {
+      const decryptedPathSegment = this.decrypt(path[i]);
       if (decryptedPathSegment !== path[i]) {
         path[i] = decryptedPathSegment;
         changed = true;
@@ -99,7 +98,7 @@ export default class Crypto {
 
   specForPath(path, def) {
     def = def || this._spec.rules;
-    for (var i = 0; def && i < path.length; i++) {
+    for (let i = 0; def && i < path.length; i++) {
       def = def[path[i]] || def.$;
     }
     return def;
@@ -111,25 +110,27 @@ export default class Crypto {
         `Transform type must be either "encrypt" or "decrypt", but got "${transformType}".`
       );
     }
-    const transform = transformType === 'encrypt' ? this.encrypt.bind(this) : this.decrypt.bind(this);
+    const transform =
+      transformType === 'encrypt' ? this.encrypt.bind(this) : this.decrypt.bind(this);
     return this.transformTree(value, this.specForPath(path), transform);
   }
 
   transformTree(value, def, transform) {
     if (!def) return value;
-    var type = this.getType(value);
-    var i;
+    const type = this.getType(value);
+    let i;
     if (/^(string|number|boolean)$/.test(type)) {
       if (def['.encrypt'] && def['.encrypt'].value) {
         value = transform(value, type, def['.encrypt'].value);
       }
     } else if (type === 'object' && value !== null) {
-      var transformedValue = {};
-      for (var key in value) {
+      const transformedValue = {};
+      for (let key in value) {
         if (!value.hasOwnProperty(key)) continue;
-        var subValue = value[key], subDef;
+        const subValue = value[key];
+        let subDef;
         if (key.indexOf('/') >= 0) {  // for deep update keys
-          var keyParts = key.split('/');
+          const keyParts = key.split('/');
           subDef = def;
           for (i = 0; i < keyParts.length; i++) {
             if (transform === this.decrypt) {
@@ -143,15 +144,13 @@ export default class Crypto {
             }
           }
           key = keyParts.join('/');
+        } else if (transform === this.decrypt) {
+          key = this.decrypt(key);
+          subDef = def[key] || def.$;
         } else {
-          if (transform === this.decrypt) {
-            key = this.decrypt(key);
-            subDef = def[key] || def.$;
-          } else {
-            subDef = def[key] || def.$;
-            if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
-              key = transform(key, 'string', subDef['.encrypt'].key);
-            }
+          subDef = def[key] || def.$;
+          if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
+            key = transform(key, 'string', subDef['.encrypt'].key);
           }
         }
         transformedValue[key] = this.transformTree(subValue, subDef, transform);
@@ -165,37 +164,37 @@ export default class Crypto {
   }
 
   refToPath(ref, encrypted) {
-    var root = ref.root;
+    const root = ref.root;
     if (ref === root) return [];
-    var pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
+    const pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
     if (!encrypted && pathStr && pathStr.charAt(0) !== '.' &&
-        /[\x00-\x1f\x7f\x91\x92\.#$\[\]]/.test(pathStr)) {
-      throw new Error('Path contains invalid characters: ' + pathStr);
+        /[\x00-\x1f\x7f\x91\x92.#$[\]]/.test(pathStr)) {  // eslint-disable-line no-control-regex
+      throw new Error(`Path contains invalid characters: ${pathStr}`);
     }
     return pathStr.split('/');
   }
 
   encrypt(value, type, pattern) {
-    var cacheKey;
+    let cacheKey;
     if (this._encryptionCache) {
       cacheKey = type.charAt(0) + pattern + '\x91' + value;
       if (this._encryptionCache.has(cacheKey)) return this._encryptionCache.get(cacheKey);
     }
-    var result;
+    let result;
     if (pattern === '#') {
       result = this.encryptValue(value, type);
     } else {
       if (type !== 'string') {
         throw new Error('Can\'t encrypt a ' + type + ' using pattern [' + pattern + ']');
       }
-      var match = value.match(this.compilePattern(pattern));
+      const match = value.match(this.compilePattern(pattern));
       if (!match) {
         throw new Error(
           'Can\'t encrypt as value doesn\'t match pattern [' + pattern + ']: ' + value);
       }
-      var i = 0;
-      result = pattern.replace(/[#\.]/g, (placeholder) => {
-        var part = match[++i];
+      let i = 0;
+      result = pattern.replace(/[#.]/g, placeholder => {
+        let part = match[++i];
         if (placeholder === '#') part = this.encryptValue(part, 'string');
         return part;
       });
@@ -214,12 +213,14 @@ export default class Crypto {
   }
 
   decrypt(value) {
-    if (this._decryptionCache && this._decryptionCache.has(value)) return this._decryptionCache.get(value);
+    if (this._decryptionCache && this._decryptionCache.has(value)) {
+      return this._decryptionCache.get(value);
+    }
     if (!/\x91/.test(value)) return value;
-    var result;
-    var match = value.match(/^\x91(.)([^\x92]*)\x92$/);
+    let result;
+    const match = value.match(/^\x91(.)([^\x92]*)\x92$/);
     if (match) {
-      var decryptedString = this._decryptString(match[2]);
+      const decryptedString = this._decryptString(match[2]);
       switch (match[1]) {
         case 'S':
           result = decryptedString;
@@ -227,7 +228,8 @@ export default class Crypto {
         case 'N':
           result = Number(decryptedString);
           // Check for NaN, since it's the only value where x !== x.
-          if (result !== result) throw new Error('Invalid encrypted number: ' + decryptedString);
+          // eslint-disable-next-line no-self-compare
+          if (result !== result) throw new Error(`Invalid encrypted number: ${decryptedString}`);
           break;
         case 'B':
           if (decryptedString === 't') result = true;
@@ -238,7 +240,7 @@ export default class Crypto {
           throw new Error('Invalid encrypted value type code: ' + match[1]);
       }
     } else {
-      result = value.replace(/\x91(.)([^\x92]*)\x92/g, (match, typeCode, encryptedString) => {
+      result = value.replace(/\x91(.)([^\x92]*)\x92/g, (ignored, typeCode, encryptedString) => {
         if (typeCode !== 'S') throw new Error('Invalid multi-segment encrypted value: ' + typeCode);
         return this._decryptString(encryptedString);
       });
@@ -249,7 +251,7 @@ export default class Crypto {
 
   getType(value) {
     if (Array.isArray(value)) return 'array';
-    var type = typeof value;
+    let type = typeof value;
     if (type === 'object') {
       if (value instanceof String) type = 'string';
       else if (value instanceof Number) type = 'number';
@@ -259,11 +261,11 @@ export default class Crypto {
   }
 
   compilePattern(pattern) {
-    var regex = this._patternRegexes[pattern];
+    let regex = this._patternRegexes[pattern];
     if (!regex) {
       regex = this._patternRegexes[pattern] = new RegExp('^' + pattern
         .replace(/\./g, '#')
-        .replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')  // escape regex chars
+        .replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&')  // escape regex chars
         .replace(/#/g, '(.*?)') + '$');
     }
     return regex;

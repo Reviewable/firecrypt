@@ -1,14 +1,9 @@
 import path from 'path';
-import babel from 'rollup-plugin-babel';
+import buble from 'rollup-plugin-buble';
 import minify from 'rollup-plugin-minify-es';
 
 const sharedConfig = {
   input: 'src/firecrypt.js',
-  plugins: [
-    babel({
-      exclude: 'node_modules/**',
-    }),
-  ],
   external: [
     'lru-cache',
     'crypto-js',
@@ -25,7 +20,12 @@ nodeConfig.output = {
   sourcemap: true,
 };
 
-const unminifiedBrowserConfig = {...sharedConfig};
+const unminifiedBrowserConfig = {
+  plugins: [
+    buble({transforms: {dangerousForOf: true}}),
+  ],
+  ...sharedConfig
+};
 unminifiedBrowserConfig.output = {
   dir: path.resolve(__dirname, 'dist/browser'),
   file: 'firecrypt.js',
@@ -34,7 +34,13 @@ unminifiedBrowserConfig.output = {
   sourcemap: true,
 };
 
-const minifiedBrowserConfig = {...sharedConfig};
+const minifiedBrowserConfig = {
+  plugins: [
+    buble({transforms: {dangerousForOf: true}}),
+    minify()
+  ],
+  ...sharedConfig
+};
 minifiedBrowserConfig.output = {
   dir: path.resolve(__dirname, 'dist/browser'),
   file: 'firecrypt.min.js',
@@ -42,7 +48,6 @@ minifiedBrowserConfig.output = {
   format: 'iife',
   sourcemap: true,
 };
-minifiedBrowserConfig.plugins = [...minifiedBrowserConfig.plugins, minify()];
 
 export default [
   unminifiedBrowserConfig,

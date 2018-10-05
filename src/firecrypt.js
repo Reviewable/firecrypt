@@ -5,23 +5,24 @@ const patchFirebaseDatabaseApi = (fb) => {
   // which must be called for an app instance to become available, and patch the App prototype
   // on the first call.  Once the prototype is patched, we can restore the original initializeApp.
   const originalInitializeApp = fb.initializeApp;
-  Object.defineProperty(fb, 'initializeApp', {value: function() {
+  Object.defineProperty(fb, 'initializeApp', {value() {
     const app = originalInitializeApp.apply(this, arguments);
     const originalDatabase = app.constructor.prototype.database;
-    Object.defineProperty(app.constructor.prototype, 'database', {value: function() {
+    Object.defineProperty(app.constructor.prototype, 'database', {value() {
       // The database() call caches databases by URL and can return the same instance on separate
       // calls.  Ensure that there's a 1-to-1 correspondance between database instances and
       // FireCrypt wrappers by associating a wrapper with its underlying database.
       const db = originalDatabase.apply(this, arguments);
       if (!db.firecrypt) {
+        // eslint-disable-next-line no-use-before-define
         Object.defineProperty(db, 'firecrypt', {value: new FireCrypt(db)});
       }
       return db.firecrypt;
     }});
     Object.defineProperty(fb, 'initializeApp', {value: originalInitializeApp});
     return app;
-  }, configurable: true})
-}
+  }, configurable: true});
+};
 
 if (typeof require !== 'undefined') {
   if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
@@ -30,10 +31,11 @@ if (typeof require !== 'undefined') {
   require('cryptojs-extension/build_node/siv');
   const admin = require('firebase-admin');
   patchFirebaseDatabaseApi(admin);
-} else if (typeof firebase !== 'undefined') {
+} else if (typeof firebase !== 'undefined') {  // eslint-disable-line no-negated-condition
+  /* globals firebase */
   patchFirebaseDatabaseApi(firebase);
 } else {
-  throw new Error('The Firebase web client SDK must be loaded before FireCrypt.')
+  throw new Error('The Firebase web client SDK must be loaded before FireCrypt.');
 }
 
 CryptoJS.enc.Base64UrlSafe = {
@@ -50,8 +52,8 @@ class FireCrypt {
     const dbIsNonNullObject = typeof db === 'object' && db !== null;
     if (!dbIsNonNullObject || typeof db.app !== 'object' || typeof db.ref !== 'function') {
       throw new Error(
-        `Expected first argument passed to FireCrypt constructor to be a Firebase Database instance, 
-        but got "${db}".`
+        `Expected first argument passed to FireCrypt constructor to be a Firebase Database ` +
+        `instance, but got "${db}".`
       );
     }
 
@@ -79,9 +81,9 @@ class FireCrypt {
       }
       return CryptoJS.enc.Utf8.stringify(result);
     };
-  
+
     this._crypto.setStringEncryptionFunctions(encryptString, decryptString);
-  
+
     if (checkValue) decryptString(checkValue);
     return encryptString(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));
   }
@@ -93,11 +95,13 @@ class FireCrypt {
   configureEncryption(options = {}, specification = {}) {
     if (typeof options !== 'object' || options === null) {
       throw new Error(
-        `Expected second argument passed to configureEncryption() to be an object, but got "${options}".`
+        `Expected second argument passed to configureEncryption() to be an object, but got ` +
+        `"${options}".`
       );
     } else if (typeof specification !== 'object' || specification === null) {
       throw new Error(
-        `Expected third argument passed to configureEncryption() to be an object, but got "${specification}".`
+        `Expected third argument passed to configureEncryption() to be an object, but got ` +
+        `"${specification}".`
       );
     }
 
@@ -161,6 +165,6 @@ class FireCrypt {
       );
     }
 
-    return new FireCryptReference(this._db.refFromURL(path), this._crypto);
+    return new FireCryptReference(this._db.refFromURL(url), this._crypto);
   }
 }

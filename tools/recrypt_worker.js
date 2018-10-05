@@ -54,7 +54,7 @@ function callMaster() {
 function traverseWildcard(specPath, oldPath, newPath, copy, keys) {
   const def = defForPath(specPath);
   _.each(keys, oldKey => {
-    let key = decrypt(oldKey);
+    const key = decrypt(oldKey);
     if (key === ALREADY_RECRYPTED) return;
     const subDef = def[key] || def.$;
     const keyFlags = subDef['.encrypt'] || {};
@@ -97,7 +97,7 @@ function traverseSmall(specPath, oldPath, newPath, value) {
   const flags = def['.encrypt'] || {};
   if (flags.children) {
     _.each(_.keys(value), oldKey => {
-      let key = decrypt(oldKey);
+      const key = decrypt(oldKey);
       if (key === ALREADY_RECRYPTED) return;
       const subDef = def[key] || def.$;
       if (!subDef) return;
@@ -182,6 +182,7 @@ function decrypt(value) {
         case 'N':
           result = Number(decryptedString);
           // Check for NaN, since it's the only value where x !== x.
+          // eslint-disable-next-line no-self-compare
           if (result !== result) throw new Error('Invalid encrypted number: ' + decryptedString);
           break;
         case 'B':
@@ -195,16 +196,15 @@ function decrypt(value) {
     }
   } else {
     let allOld = true, allNew = true;
-    result = value.replace(/\x91(.)([^\x92]*)\x92/g, function(match, typeCode, encryptedString) {
+    result = value.replace(/\x91(.)([^\x92]*)\x92/g, (ignore, typeCode, encryptedString) => {
       if (typeCode !== 'S') throw new Error('Invalid multi-segment encrypted value: ' + typeCode);
       const decryptedString = decryptOldString(encryptedString);
       if (decryptedString === ALREADY_RECRYPTED) {
         allOld = false;
         return encryptedString;
-      } else {
-        allNew = false;
-        return decryptedString;
       }
+      allNew = false;
+      return decryptedString;
     });
     if (allNew) result = ALREADY_RECRYPTED;
     else if (!allOld) throw new Error('Patterned value partially recrypted');
@@ -237,7 +237,7 @@ function encrypt(value, pattern, old) {
         'Can\'t encrypt as value doesn\'t match pattern [' + pattern + ']: ' + value);
     }
     let i = 0;
-    result = pattern.replace(/[#\.]/g, function(placeholder) {
+    result = pattern.replace(/[#.]/g, placeholder => {
       let part = match[++i];
       if (placeholder === '#') part = encryptValue(part, 'string', siv);
       return part;
@@ -252,7 +252,7 @@ function decryptOldString(str) {
   if (result === false) {
     result = newSiv ? newSiv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)) : false;
     if (result !== false) return ALREADY_RECRYPTED;
-    var e = new Error('Wrong decryption key');
+    const e = new Error('Wrong decryption key');
     e.firecrypt = 'WRONG_KEY';
     throw e;
   }
@@ -288,7 +288,7 @@ function compilePattern(pattern) {
   if (!regex) {
     regex = patternRegexes[pattern] = new RegExp('^' + pattern
       .replace(/\./g, '#')
-      .replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')  // escape regex chars
+      .replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&')  // escape regex chars
       .replace(/#/g, '(.*?)') + '$');
   }
   return regex;

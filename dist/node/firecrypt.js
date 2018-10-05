@@ -11,30 +11,29 @@ class Crypto {
     if (typeof LRUCache === 'function') {
       this._encryptionCache = new LRUCache({
         max: options.encryptionCacheSize,
-        length: this._computeCacheItemSize
+        length: this._computeCacheItemSize,
       });
       this._decryptionCache = new LRUCache({
         max: options.decryptionCacheSize,
-        length: this._computeCacheItemSize
+        length: this._computeCacheItemSize,
       });
     }
   }
 
   _cleanSpecification(def, path) {
-    var keys = Object.keys(def);
-    for (var i = 0; i < keys.length; i++) {
-      var key = keys[i];
+    const keys = Object.keys(def);
+    for (const key of keys) {
       if (key === '.encrypt') {
-        var encryptKeys = Object.keys(def[key]);
-        for (var j = 0; j < encryptKeys.length; j++) {
-          var encryptKey = encryptKeys[j];
+        const encryptKeys = Object.keys(def[key]);
+        for (const encryptKey of encryptKeys) {
           if (encryptKey !== 'key' && encryptKey !== 'value' && encryptKey !== 'few') {
-            throw new Error('Illegal .encrypt subkey: ' + encryptKeys[j]);
+            throw new Error(`Illegal .encrypt subkey: ${encryptKey}`);
           }
         }
       } else {
-        if (/[\x00-\x1f\x7f\x91\x92\.#\[\]/]/.test(key) || /[$]/.test(key.slice(1))) {
-          throw new Error('Illegal character in specification key: ' + key);
+        // eslint-disable-next-line no-control-regex
+        if (/[\x00-\x1f\x7f\x91\x92.#[\]/]/.test(key) || /[$]/.test(key.slice(1))) {
+          throw new Error(`Illegal character in specification key: ${key}`);
         }
         this._cleanSpecification(def[key], (path || '') + '/' + key);
       }
@@ -54,7 +53,7 @@ class Crypto {
   }
 
   _throwNotSetUpError() {
-    var e = new Error('Encryption not set up');
+    const e = new Error('Encryption not set up');
     e.firecrypt = 'NO_KEY';
     throw e;
   }
@@ -71,7 +70,7 @@ class Crypto {
   encryptPath(path, def) {
     def = def || this._spec.rules;
     path = path.slice();
-    for (var i = 0; i < path.length; i++) {
+    for (let i = 0; i < path.length; i++) {
       def = def[path[i]] || def.$;
       if (!def) break;
       if (def['.encrypt'] && def['.encrypt'].key) {
@@ -82,15 +81,15 @@ class Crypto {
   }
 
   encryptRef(ref, path) {
-    var encryptedPath = this.encryptPath(path || this.refToPath(ref));
+    const encryptedPath = this.encryptPath(path || this.refToPath(ref));
     return encryptedPath.length ? ref.root.child(encryptedPath.join('/')) : ref.root;
   }
 
   decryptRef(ref) {
-    var path = this.refToPath(ref, true);
-    var changed = false;
-    for (var i = 0; i < path.length; i++) {
-      var decryptedPathSegment = this.decrypt(path[i]);
+    const path = this.refToPath(ref, true);
+    let changed = false;
+    for (let i = 0; i < path.length; i++) {
+      const decryptedPathSegment = this.decrypt(path[i]);
       if (decryptedPathSegment !== path[i]) {
         path[i] = decryptedPathSegment;
         changed = true;
@@ -101,7 +100,7 @@ class Crypto {
 
   specForPath(path, def) {
     def = def || this._spec.rules;
-    for (var i = 0; def && i < path.length; i++) {
+    for (let i = 0; def && i < path.length; i++) {
       def = def[path[i]] || def.$;
     }
     return def;
@@ -109,29 +108,31 @@ class Crypto {
 
   transformValue(path, value, transformType) {
     if (transformType !== 'encrypt' && transformType !== 'decrypt') {
-      throw new Error(`Transform type must be either "encrypt" or "decrypt", but got "${transformType}".`);
+      throw new Error(
+        `Transform type must be either "encrypt" or "decrypt", but got "${transformType}".`
+      );
     }
-    const transform = transformType === 'encrypt' ? this.encrypt.bind(this) : this.decrypt.bind(this);
+    const transform =
+      transformType === 'encrypt' ? this.encrypt.bind(this) : this.decrypt.bind(this);
     return this.transformTree(value, this.specForPath(path), transform);
   }
 
   transformTree(value, def, transform) {
     if (!def) return value;
-    var type = this.getType(value);
-    var i;
+    const type = this.getType(value);
+    let i;
     if (/^(string|number|boolean)$/.test(type)) {
       if (def['.encrypt'] && def['.encrypt'].value) {
         value = transform(value, type, def['.encrypt'].value);
       }
     } else if (type === 'object' && value !== null) {
-      var transformedValue = {};
-      for (var key in value) {
+      const transformedValue = {};
+      for (let key in value) {
         if (!value.hasOwnProperty(key)) continue;
-        var subValue = value[key],
-            subDef;
-        if (key.indexOf('/') >= 0) {
-          // for deep update keys
-          var keyParts = key.split('/');
+        const subValue = value[key];
+        let subDef;
+        if (key.indexOf('/') >= 0) {  // for deep update keys
+          const keyParts = key.split('/');
           subDef = def;
           for (i = 0; i < keyParts.length; i++) {
             if (transform === this.decrypt) {
@@ -145,15 +146,13 @@ class Crypto {
             }
           }
           key = keyParts.join('/');
+        } else if (transform === this.decrypt) {
+          key = this.decrypt(key);
+          subDef = def[key] || def.$;
         } else {
-          if (transform === this.decrypt) {
-            key = this.decrypt(key);
-            subDef = def[key] || def.$;
-          } else {
-            subDef = def[key] || def.$;
-            if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
-              key = transform(key, 'string', subDef['.encrypt'].key);
-            }
+          subDef = def[key] || def.$;
+          if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
+            key = transform(key, 'string', subDef['.encrypt'].key);
           }
         }
         transformedValue[key] = this.transformTree(subValue, subDef, transform);
@@ -167,35 +166,37 @@ class Crypto {
   }
 
   refToPath(ref, encrypted) {
-    var root = ref.root;
+    const root = ref.root;
     if (ref === root) return [];
-    var pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
-    if (!encrypted && pathStr && pathStr.charAt(0) !== '.' && /[\x00-\x1f\x7f\x91\x92\.#$\[\]]/.test(pathStr)) {
-      throw new Error('Path contains invalid characters: ' + pathStr);
+    const pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
+    if (!encrypted && pathStr && pathStr.charAt(0) !== '.' &&
+        /[\x00-\x1f\x7f\x91\x92.#$[\]]/.test(pathStr)) {  // eslint-disable-line no-control-regex
+      throw new Error(`Path contains invalid characters: ${pathStr}`);
     }
     return pathStr.split('/');
   }
 
   encrypt(value, type, pattern) {
-    var cacheKey;
+    let cacheKey;
     if (this._encryptionCache) {
       cacheKey = type.charAt(0) + pattern + '\x91' + value;
       if (this._encryptionCache.has(cacheKey)) return this._encryptionCache.get(cacheKey);
     }
-    var result;
+    let result;
     if (pattern === '#') {
       result = this.encryptValue(value, type);
     } else {
       if (type !== 'string') {
         throw new Error('Can\'t encrypt a ' + type + ' using pattern [' + pattern + ']');
       }
-      var match = value.match(this.compilePattern(pattern));
+      const match = value.match(this.compilePattern(pattern));
       if (!match) {
-        throw new Error('Can\'t encrypt as value doesn\'t match pattern [' + pattern + ']: ' + value);
+        throw new Error(
+          'Can\'t encrypt as value doesn\'t match pattern [' + pattern + ']: ' + value);
       }
-      var i = 0;
-      result = pattern.replace(/[#\.]/g, placeholder => {
-        var part = match[++i];
+      let i = 0;
+      result = pattern.replace(/[#.]/g, placeholder => {
+        let part = match[++i];
         if (placeholder === '#') part = this.encryptValue(part, 'string');
         return part;
       });
@@ -207,21 +208,21 @@ class Crypto {
   encryptValue(value, type) {
     if (!/^(string|number|boolean)$/.test(type)) throw new Error('Can\'t encrypt a ' + type);
     switch (type) {
-      case 'number':
-        value = '' + value;break;
-      case 'boolean':
-        value = value ? 't' : 'f';break;
+      case 'number': value = '' + value; break;
+      case 'boolean': value = value ? 't' : 'f'; break;
     }
     return '\x91' + type.charAt(0).toUpperCase() + this._encryptString(value) + '\x92';
   }
 
   decrypt(value) {
-    if (this._decryptionCache && this._decryptionCache.has(value)) return this._decryptionCache.get(value);
+    if (this._decryptionCache && this._decryptionCache.has(value)) {
+      return this._decryptionCache.get(value);
+    }
     if (!/\x91/.test(value)) return value;
-    var result;
-    var match = value.match(/^\x91(.)([^\x92]*)\x92$/);
+    let result;
+    const match = value.match(/^\x91(.)([^\x92]*)\x92$/);
     if (match) {
-      var decryptedString = this._decryptString(match[2]);
+      const decryptedString = this._decryptString(match[2]);
       switch (match[1]) {
         case 'S':
           result = decryptedString;
@@ -229,16 +230,19 @@ class Crypto {
         case 'N':
           result = Number(decryptedString);
           // Check for NaN, since it's the only value where x !== x.
-          if (result !== result) throw new Error('Invalid encrypted number: ' + decryptedString);
+          // eslint-disable-next-line no-self-compare
+          if (result !== result) throw new Error(`Invalid encrypted number: ${decryptedString}`);
           break;
         case 'B':
-          if (decryptedString === 't') result = true;else if (decryptedString === 'f') result = false;else throw new Error('Invalid encrypted boolean: ' + decryptedString);
+          if (decryptedString === 't') result = true;
+          else if (decryptedString === 'f') result = false;
+          else throw new Error('Invalid encrypted boolean: ' + decryptedString);
           break;
         default:
           throw new Error('Invalid encrypted value type code: ' + match[1]);
       }
     } else {
-      result = value.replace(/\x91(.)([^\x92]*)\x92/g, (match, typeCode, encryptedString) => {
+      result = value.replace(/\x91(.)([^\x92]*)\x92/g, (ignored, typeCode, encryptedString) => {
         if (typeCode !== 'S') throw new Error('Invalid multi-segment encrypted value: ' + typeCode);
         return this._decryptString(encryptedString);
       });
@@ -249,18 +253,22 @@ class Crypto {
 
   getType(value) {
     if (Array.isArray(value)) return 'array';
-    var type = typeof value;
+    let type = typeof value;
     if (type === 'object') {
-      if (value instanceof String) type = 'string';else if (value instanceof Number) type = 'number';else if (value instanceof Boolean) type = 'boolean';
+      if (value instanceof String) type = 'string';
+      else if (value instanceof Number) type = 'number';
+      else if (value instanceof Boolean) type = 'boolean';
     }
     return type;
   }
 
   compilePattern(pattern) {
-    var regex = this._patternRegexes[pattern];
+    let regex = this._patternRegexes[pattern];
     if (!regex) {
-      regex = this._patternRegexes[pattern] = new RegExp('^' + pattern.replace(/\./g, '#').replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&') // escape regex chars
-      .replace(/#/g, '(.*?)') + '$');
+      regex = this._patternRegexes[pattern] = new RegExp('^' + pattern
+        .replace(/\./g, '#')
+        .replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&')  // escape regex chars
+        .replace(/#/g, '(.*?)') + '$');
     }
     return regex;
   }
@@ -291,7 +299,7 @@ class FireCryptSnapshot {
   }
 
   forEach(action) {
-    return this._snap.forEach(childSnap => {
+    return this._snap.forEach((childSnap) => {
       return action(new FireCryptSnapshot(childSnap), this._crypto);
     });
   }
@@ -301,7 +309,8 @@ class FireCryptSnapshot {
   }
 
   hasChild(childPath) {
-    childPath = this._crypto.encryptPath(childPath.split('/'), this._crypto.specForPath(this._path)).join('/');
+    childPath = this._crypto.encryptPath(
+      childPath.split('/'), this._crypto.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   }
 
@@ -330,8 +339,9 @@ class FireCryptQuery {
   _wrapQueryCallback(callback) {
     if (!callback || callback.firecryptCallback) return;
     const self = this;
-    const wrappedCallback = function (snap, previousChildKey) {
-      return callback.call(this, new FireCryptSnapshot(snap, self._crypto), previousChildKey, self._crypto);
+    const wrappedCallback = function(snap, previousChildKey) {
+      return callback.call(  // eslint-disable-next-line no-invalid-this
+        this, new FireCryptSnapshot(snap, self._crypto), previousChildKey, self._crypto);
     };
     wrappedCallback.firecryptCallback = wrappedCallback;
     callback.firecryptCallback = wrappedCallback;
@@ -343,7 +353,8 @@ class FireCryptQuery {
 
   on(eventType, callback, cancelCallback, context) {
     this._wrapQueryCallback(callback);
-    return this._originalRef.on.call(this._query, eventType, callback.firecryptCallback, cancelCallback, context);
+    return this._originalRef.on.call(
+      this._query, eventType, callback.firecryptCallback, cancelCallback, context);
   }
 
   off(eventType, callback, context) {
@@ -353,7 +364,10 @@ class FireCryptQuery {
 
   once(eventType, successCallback, failureCallback, context) {
     this._wrapQueryCallback(successCallback);
-    return this._originalRef.once.call(this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback, context).then(snap => {
+    return this._originalRef.once.call(
+      this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback,
+      context
+    ).then((snap) => {
       return new FireCryptSnapshot(snap, this._crypto);
     });
   }
@@ -382,12 +396,16 @@ class FireCryptQuery {
 
   equalTo(value, key) {
     if (this._order[this._order.by + 'Encrypted']) {
-      value = this._crypto.encrypt(value, this._crypto.getType(value), this._order[this._order.by + 'Encrypted']);
+      value = this._crypto.encrypt(
+        value, this._crypto.getType(value), this._order[this._order.by + 'Encrypted']);
     }
     if (key !== undefined && this._order.keyEncrypted) {
       key = this._crypto.encrypt(key, 'string', this._order.keyEncrypted);
     }
-    return new FireCryptQuery(this._originalRef.equalTo.call(this._query, value, key), this._order, this._originalRef, this._crypto);
+    return new FireCryptQuery(
+      this._originalRef.equalTo.call(this._query, value, key), this._order, this._originalRef,
+      this._crypto
+    );
   }
 
   limitToFirst() {
@@ -399,18 +417,22 @@ class FireCryptQuery {
   }
 
   _delegate(methodName, args) {
-    return new FireCryptQuery(this._originalRef[methodName].apply(this._query, args), this._order, this._originalRef, this._crypto);
+    return new FireCryptQuery(
+      this._originalRef[methodName].apply(this._query, args), this._order, this._originalRef,
+      this._crypto
+    );
   }
 
   _checkCanSort(hasExtraKey) {
-    if (this._order.by === 'key' ? this._order.keyEncrypted : this._order.valueEncrypted || hasExtraKey && this._order.keyEncrypted) {
-      throw new Error('Encrypted items cannot be ordered');
-    }
+    const orderedAndEncrypted = this._order.by === 'key' ?
+      this._order.keyEncrypted :
+      this._order.valueEncrypted || hasExtraKey && this._order.keyEncrypted;
+    if (orderedAndEncrypted) throw new Error('Encrypted items cannot be ordered');
   }
 
   _orderBy(methodName, by, childKey) {
     const def = this._crypto.specForPath(this._crypto.refToPath(this.ref));
-    const order = { by: by };
+    const order = {by};
 
     let encryptedChildKey;
     if (def) {
@@ -429,17 +451,22 @@ class FireCryptQuery {
           }
           const encryptedChildKeyCandidate = this._crypto.encryptPath(childPath, subDef).join('/');
           if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
-            throw new Error('Incompatible encryption specifications for orderByChild("' + childKey + '")');
+            throw new Error(
+              'Incompatible encryption specifications for orderByChild("' + childKey + '")');
           }
           encryptedChildKey = encryptedChildKeyCandidate;
         }
       }
     }
     if (childKey) {
-      return new FireCryptQuery(this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order, this._originalRef, this._crypto);
-    } else {
-      return new FireCryptQuery(this._originalRef[methodName].call(this._query), order, this._originalRef, this._crypto);
+      return new FireCryptQuery(
+        this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order,
+        this._originalRef, this._crypto
+      );
     }
+    return new FireCryptQuery(
+      this._originalRef[methodName].call(this._query), order, this._originalRef, this._crypto
+    );
   }
 }
 
@@ -453,7 +480,7 @@ class FireCryptOnDisconnect {
   _interceptOnDisconnectWrite(methodName, originalArguments, argIndex) {
     const self = this;
 
-    this[methodName] = function () {
+    this[methodName] = function() {
       const args = Array.prototype.slice.call(originalArguments);
       if (argIndex >= 0 && argIndex < args.length) {
         args[argIndex] = self._crypto.transformValue(self._path, args[argIndex], 'encrypt');
@@ -544,11 +571,8 @@ class FireCryptReference {
    *     reference.
    */
   get ref() {
-    if (this._ref.isEqual(this._ref.ref)) {
-      return this;
-    } else {
-      return new FireCryptReference(this._ref.ref, this._crypto);
-    }
+    if (this._ref.isEqual(this._ref.ref)) return this;
+    return new FireCryptReference(this._ref.ref, this._crypto);
   }
 
   /**
@@ -556,11 +580,8 @@ class FireCryptReference {
    * @return {FireCryptReference} The root reference of the database.
    */
   get root() {
-    if (this._ref.isEqual(this._ref.root)) {
-      return this;
-    } else {
-      return new FireCryptReference(this._ref.root, this._crypto);
-    }
+    if (this._ref.isEqual(this._ref.root)) return this;
+    return new FireCryptReference(this._ref.root, this._crypto);
   }
 
   /**
@@ -569,11 +590,8 @@ class FireCryptReference {
    * @return {FireCryptReference|null} The parent location of this reference.
    */
   get parent() {
-    if (this._ref.parent === null) {
-      return null;
-    } else {
-      return new FireCryptReference(this._ref.parent, this._crypto);
-    }
+    if (this._ref.parent === null) return null;
+    return new FireCryptReference(this._ref.parent, this._crypto);
   }
 
   /**
@@ -602,7 +620,8 @@ class FireCryptReference {
   }
 
   /**
-   * Returns whether or not this FireCryptReference is equivalent to the provided FireCryptReference.
+   * Returns whether or not this FireCryptReference is equivalent to the provided
+   * FireCryptReference.
    * @return {FireCryptReference} Another FireCryptReference instance against which to compare.
    */
   isEqual(otherRef) {
@@ -651,13 +670,15 @@ class FireCryptReference {
     const originalMethod = this._ref.childrenKeys || childrenKeysFromLib;
 
     if (typeof originalMethod !== 'function') {
-      throw new Error(`childrenKeys() is not implemented. You must either provide a Firebase Database Reference
-        which implements childrenKeys() or npm install the firebase-children keys libary.`);
+      throw new Error(
+        `childrenKeys() is not implemented. You must either provide a Firebase Database Reference
+        which implements childrenKeys() or npm install the firebase-children keys libary.`
+      );
     }
 
     const encryptedRef = this._crypto.encryptRef(this._ref);
-    return originalMethod.apply(encryptedRef, [encryptedRef, ...arguments]).then(keys => {
-      if (!keys.some(key => /\x91/.test(key))) {
+    return originalMethod.apply(encryptedRef, [encryptedRef, ...arguments]).then((keys) => {
+      if (!keys.some((key) => /\x91/.test(key))) {
         return keys;
       }
       return keys.map(this._crypto.decrypt.bind(this._crypto));
@@ -666,7 +687,8 @@ class FireCryptReference {
 
   onDisconnect() {
     const encryptedRef = this._crypto.encryptRef(this._ref);
-    return new FireCryptOnDisconnect(encryptedRef, this._ref.onDisconnect.call(encryptedRef), this._crypto);
+    return new FireCryptOnDisconnect(
+      encryptedRef, this._ref.onDisconnect.call(encryptedRef), this._crypto);
   }
 
   on() {
@@ -719,7 +741,7 @@ class FireCryptReference {
 
     const args = Array.prototype.slice.call(arguments);
     const originalCompute = args[0];
-    args[0] = originalCompute && (value => {
+    args[0] = originalCompute && ((value) => {
       value = this._crypto.transformValue(path, value, 'decrypt');
       value = originalCompute(value);
       value = this._crypto.transformValue(path, value, 'encrypt');
@@ -728,39 +750,41 @@ class FireCryptReference {
     if (args.length > 1) {
       const originalOnComplete = args[1];
       args[1] = originalOnComplete && ((error, committed, snapshot) => {
-        return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot, this._crypto));
+        return originalOnComplete(
+          error, committed, snapshot && new FireCryptSnapshot(snapshot, this._crypto));
       });
     }
-    return this._ref.transaction.apply(encryptedRef, args).then(result => {
+    return this._ref.transaction.apply(encryptedRef, args).then((result) => {
       result.snapshot = result.snapshot && new FireCryptSnapshot(result.snapshot, this._crypto);
       return result;
     });
   }
 }
 
-const patchFirebaseDatabaseApi = fb => {
+const patchFirebaseDatabaseApi = (fb) => {
   // We want to wrap all instances of the Firebase database() with FireCrypt.  These are always
   // eventually instantiated via an App's database() function, so we'd like to override that.
   // However, we can't get at the App prototype directly so instead we patch initializeApp(),
   // which must be called for an app instance to become available, and patch the App prototype
   // on the first call.  Once the prototype is patched, we can restore the original initializeApp.
   const originalInitializeApp = fb.initializeApp;
-  Object.defineProperty(fb, 'initializeApp', { value: function () {
-      const app = originalInitializeApp.apply(this, arguments);
-      const originalDatabase = app.constructor.prototype.database;
-      Object.defineProperty(app.constructor.prototype, 'database', { value: function () {
-          // The database() call caches databases by URL and can return the same instance on separate
-          // calls.  Ensure that there's a 1-to-1 correspondance between database instances and
-          // FireCrypt wrappers by associating a wrapper with its underlying database.
-          const db = originalDatabase.apply(this, arguments);
-          if (!db.firecrypt) {
-            Object.defineProperty(db, 'firecrypt', { value: new FireCrypt(db) });
-          }
-          return db.firecrypt;
-        } });
-      Object.defineProperty(fb, 'initializeApp', { value: originalInitializeApp });
-      return app;
-    }, configurable: true });
+  Object.defineProperty(fb, 'initializeApp', {value() {
+    const app = originalInitializeApp.apply(this, arguments);
+    const originalDatabase = app.constructor.prototype.database;
+    Object.defineProperty(app.constructor.prototype, 'database', {value() {
+      // The database() call caches databases by URL and can return the same instance on separate
+      // calls.  Ensure that there's a 1-to-1 correspondance between database instances and
+      // FireCrypt wrappers by associating a wrapper with its underlying database.
+      const db = originalDatabase.apply(this, arguments);
+      if (!db.firecrypt) {
+        // eslint-disable-next-line no-use-before-define
+        Object.defineProperty(db, 'firecrypt', {value: new FireCrypt(db)});
+      }
+      return db.firecrypt;
+    }});
+    Object.defineProperty(fb, 'initializeApp', {value: originalInitializeApp});
+    return app;
+  }, configurable: true});
 };
 
 if (typeof require !== 'undefined') {
@@ -770,7 +794,8 @@ if (typeof require !== 'undefined') {
   require('cryptojs-extension/build_node/siv');
   const admin = require('firebase-admin');
   patchFirebaseDatabaseApi(admin);
-} else if (typeof firebase !== 'undefined') {
+} else if (typeof firebase !== 'undefined') {  // eslint-disable-line no-negated-condition
+  /* globals firebase */
   patchFirebaseDatabaseApi(firebase);
 } else {
   throw new Error('The Firebase web client SDK must be loaded before FireCrypt.');
@@ -779,15 +804,17 @@ if (typeof require !== 'undefined') {
 CryptoJS.enc.Base64UrlSafe = {
   stringify: CryptoJS.enc.Base64.stringify,
   parse: CryptoJS.enc.Base64.parse,
-  _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+  _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_',
 };
 
 class FireCrypt {
   constructor(db) {
     const dbIsNonNullObject = typeof db === 'object' && db !== null;
     if (!dbIsNonNullObject || typeof db.app !== 'object' || typeof db.ref !== 'function') {
-      throw new Error(`Expected first argument passed to FireCrypt constructor to be a Firebase Database instance, 
-        but got "${db}".`);
+      throw new Error(
+        `Expected first argument passed to FireCrypt constructor to be a Firebase Database ` +
+        `instance, but got "${db}".`
+      );
     }
 
     this._db = db;
@@ -802,10 +829,10 @@ class FireCrypt {
 
   _setupAesSiv(key, checkValue) {
     const siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
-    const encryptString = str => {
+    const encryptString = (str) => {
       return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
     };
-    const decryptString = str => {
+    const decryptString = (str) => {
       const result = siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str));
       if (result === false) {
         const e = new Error('Wrong decryption key');
@@ -827,9 +854,15 @@ class FireCrypt {
 
   configureEncryption(options = {}, specification = {}) {
     if (typeof options !== 'object' || options === null) {
-      throw new Error(`Expected second argument passed to configureEncryption() to be an object, but got "${options}".`);
+      throw new Error(
+        `Expected second argument passed to configureEncryption() to be an object, but got ` +
+        `"${options}".`
+      );
     } else if (typeof specification !== 'object' || specification === null) {
-      throw new Error(`Expected third argument passed to configureEncryption() to be an object, but got "${specification}".`);
+      throw new Error(
+        `Expected third argument passed to configureEncryption() to be an object, but got ` +
+        `"${specification}".`
+      );
     }
 
     options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
@@ -846,7 +879,7 @@ class FireCrypt {
         result = this._setupAesSiv(options.key, options.keyCheckValue);
         break;
       case 'passthrough':
-        this._crypto.setStringEncryptionFunctions(str => str, str => str);
+        this._crypto.setStringEncryptionFunctions((str) => str, (str) => str);
         break;
       case 'none':
         break;
@@ -875,7 +908,9 @@ class FireCrypt {
     this._ensureEncryptionConfigured();
 
     if (typeof path !== 'undefined' && typeof path !== 'string') {
-      throw new Error(`Expected first argument passed to ref() to be undefined or a string, but got "${path}".`);
+      throw new Error(
+        `Expected first argument passed to ref() to be undefined or a string, but got "${path}".`
+      );
     }
 
     return new FireCryptReference(this._db.ref(path), this._crypto);
@@ -885,10 +920,12 @@ class FireCrypt {
     this._ensureEncryptionConfigured();
 
     if (typeof url !== 'string' || url.match(/^https:\/\/.*/g) === null) {
-      throw new Error(`Expected first argument passed to refFromURL() to be a string URL, but got "${url}".`);
+      throw new Error(
+        `Expected first argument passed to refFromURL() to be a string URL, but got "${url}".`
+      );
     }
 
-    return new FireCryptReference(this._db.refFromURL(path), this._crypto);
+    return new FireCryptReference(this._db.refFromURL(url), this._crypto);
   }
 }
 //# sourceMappingURL=firecrypt.js.map

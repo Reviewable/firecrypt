@@ -18,36 +18,36 @@ NodeFire.setCacheSize(0);
 
 const commandLineOptions = [
   {name: 'firebase', alias: 'f',
-   typeLabel: '[underline]{database}',
-   description: 'The unique id of the target realtime database (required).'},
+    typeLabel: '[underline]{database}',
+    description: 'The unique id of the target realtime database (required).'},
   {name: 'auth', alias: 'a',
-   typeLabel: '[underline]{secret}',
-   description: 'A master secret to authenticate with for the target database (required).'},
+    typeLabel: '[underline]{secret}',
+    description: 'A master secret to authenticate with for the target database (required).'},
   {name: 'spec', alias: 's',
-   typeLabel: '[underline]{file}',
-   description: 'The firecrypt rules JSON file (required).'},
+    typeLabel: '[underline]{file}',
+    description: 'The firecrypt rules JSON file (required).'},
   {name: 'oldKey', alias: 'o',
-   typeLabel: '[underline]{base64key}',
-   description: 'The old encryption key to be replaced.'},
+    typeLabel: '[underline]{base64key}',
+    description: 'The old encryption key to be replaced.'},
   {name: 'newKey', alias: 'n',
-   typeLabel: '[underline]{base64key}',
-   description: 'The new encryption key to use.'},
+    typeLabel: '[underline]{base64key}',
+    description: 'The new encryption key to use.'},
   {name: 'cpus', alias: 'c', defaultValue: os.cpus().length,
-   typeLabel: '[underline]{number}',
-   description: 'The number of CPUs to use (defaults to all available).'},
+    typeLabel: '[underline]{number}',
+    description: 'The number of CPUs to use (defaults to all available).'},
   {name: 'help', alias: 'h',
-   description: 'Display these usage instructions.'},
+    description: 'Display these usage instructions.'},
   {name: 'log', alias: 'l',
-   typeLabel: '[underline]{file}',
-   description: 'Stream logging messages to a file for debugging.'}
+    typeLabel: '[underline]{file}',
+    description: 'Stream logging messages to a file for debugging.'}
 ];
 
 const usageSpec = [
   {header: 'Encryption key rotation tool',
-   content:
-    'Changes the encryption key of a Firebase database that has been encrypted with firecrypt. ' +
-    'It can also remove the encryption altogether, or add it to an unencrypted database.\n\n' +
-    'You should ensure that nobody accesses the database while the keys are being rotated.'
+    content:
+      'Changes the encryption key of a Firebase database that has been encrypted with firecrypt. ' +
+      'It can also remove the encryption altogether, or add it to an unencrypted database.\n\n' +
+      'You should ensure that nobody accesses the database while the keys are being rotated.'
   },
   {header: 'Options', optionList: commandLineOptions}
 ];
@@ -64,7 +64,7 @@ if (args.help) {
   process.exit(0);
 }
 try {
-  for (let property of ['firebase', 'auth', 'spec']) {
+  for (const property of ['firebase', 'auth', 'spec']) {
     if (!(property in args)) throw new Error('Missing required option: ' + property + '.');
   }
   if (!('oldKey' in args || 'newKey' in args)) {
@@ -216,7 +216,7 @@ class CommandQueue {
     }
     this.refresh();
     if (++this._numAdds % 1000 === 0) {
-      let mem = process.memoryUsage();
+      const mem = process.memoryUsage();
       log(
         `commandStats big: ${this._bigCommands.length}, small: ${this._smallCommands.length},`,
         `rss: ${_.round(mem.rss / MILLION)}, heap: ${_.round(mem.heapUsed / MILLION)}`
@@ -345,7 +345,8 @@ function expandSpecification(def, path) {
       if (badSubKeys.length) throw new Error('Illegal .encrypt subkeys: ' + badSubKeys.join(', '));
     } else {
       if (key.charAt(0) === '.') throw new Error('Unknown directive at ' + path + ': ' + key);
-      if (/[\x00-\x1f\x7f\x91\x92\.#\[\]/]/.test(key) || /[$]/.test(key.slice(1))) {
+      // eslint-disable-next-line no-control-regex
+      if (/[\x00-\x1f\x7f\x91\x92.#[\]/]/.test(key) || /[$]/.test(key.slice(1))) {
         throw new Error('Illegal character in specification key: ' + key);
       }
       expandSpecification(def[key], (path || '') + '/' + key);
@@ -375,23 +376,21 @@ function *traverse(specPath, oldPath, newPath, copy) {
       const leaf = yield db.child(oldPath).get();
       pace.op();
       if (leaf) commandQueue.add('transformSmall', specPath, oldPath, newPath, leaf);
-    } else {
-      if (def.$) {
-        if (flags.big) {
-          const keys = yield requestKeys(oldPath);
-          _.each(_.chunk(keys, WILDCARD_KEYS_CHUNK_SIZE), keysChunk => {
-            commandQueue.add('traverseWildcard', specPath, oldPath, newPath, copy, keysChunk);
-          });
-        } else {
-          // !flags.big && !copy
-          pace.total += 1;
-          const leaf = yield db.child(oldPath).get();
-          pace.op();
-          if (leaf) commandQueue.add('traverseSmall', specPath, oldPath, newPath, leaf);
-        }
+    } else if (def.$) {
+      if (flags.big) {
+        const keys = yield requestKeys(oldPath);
+        _.each(_.chunk(keys, WILDCARD_KEYS_CHUNK_SIZE), keysChunk => {
+          commandQueue.add('traverseWildcard', specPath, oldPath, newPath, copy, keysChunk);
+        });
       } else {
-        commandQueue.add('traverseSpec', specPath, oldPath, newPath, copy);
+        // !flags.big && !copy
+        pace.total += 1;
+        const leaf = yield db.child(oldPath).get();
+        pace.op();
+        if (leaf) commandQueue.add('traverseSmall', specPath, oldPath, newPath, leaf);
       }
+    } else {
+      commandQueue.add('traverseSpec', specPath, oldPath, newPath, copy);
     }
   } catch (e) {
     e.specPath = specPath;
@@ -411,15 +410,14 @@ function requestKeys(path) {
     const req = () => {
       log('requestKeys', path);
       request({
-        uri: firebaseUrl + uriPath + '.json', qs: {auth: firebaseAuth, shallow: true}, agent: agent
+        uri: firebaseUrl + uriPath + '.json', qs: {auth: firebaseAuth, shallow: true}, agent
       }, (error, response, data) => {
         if (!error) {
           try {
             const regex = /"(.*?)"/g, keys = [];
             let match;
-            // jshint boss:true
+            // eslint-disable-next-line no-cond-assign
             while (match = regex.exec(data)) keys.push(match[1]);  // don't unescape keys!
-            // jshint boss:false
             pace.op();
             resolve(keys);
           } catch (e) {

@@ -66,11 +66,8 @@ export default class FireCryptReference {
    *     reference.
    */
   get ref() {
-    if (this._ref.isEqual(this._ref.ref)) {
-      return this;
-    } else {
-      return new FireCryptReference(this._ref.ref, this._crypto);
-    }
+    if (this._ref.isEqual(this._ref.ref)) return this;
+    return new FireCryptReference(this._ref.ref, this._crypto);
   }
 
   /**
@@ -78,11 +75,8 @@ export default class FireCryptReference {
    * @return {FireCryptReference} The root reference of the database.
    */
   get root() {
-    if (this._ref.isEqual(this._ref.root)) {
-      return this;
-    } else {
-      return new FireCryptReference(this._ref.root, this._crypto);
-    }
+    if (this._ref.isEqual(this._ref.root)) return this;
+    return new FireCryptReference(this._ref.root, this._crypto);
   }
 
   /**
@@ -91,11 +85,8 @@ export default class FireCryptReference {
    * @return {FireCryptReference|null} The parent location of this reference.
    */
   get parent() {
-    if (this._ref.parent === null) {
-      return null;
-    } else {
-      return new FireCryptReference(this._ref.parent, this._crypto);
-    }
+    if (this._ref.parent === null) return null;
+    return new FireCryptReference(this._ref.parent, this._crypto);
   }
 
   /**
@@ -124,7 +115,8 @@ export default class FireCryptReference {
   }
 
   /**
-   * Returns whether or not this FireCryptReference is equivalent to the provided FireCryptReference.
+   * Returns whether or not this FireCryptReference is equivalent to the provided
+   * FireCryptReference.
    * @return {FireCryptReference} Another FireCryptReference instance against which to compare.
    */
   isEqual(otherRef) {
@@ -190,7 +182,8 @@ export default class FireCryptReference {
 
   onDisconnect() {
     const encryptedRef = this._crypto.encryptRef(this._ref);
-    return new FireCryptOnDisconnect(encryptedRef, this._ref.onDisconnect.call(encryptedRef), this._crypto);
+    return new FireCryptOnDisconnect(
+      encryptedRef, this._ref.onDisconnect.call(encryptedRef), this._crypto);
   }
 
   on() {
@@ -252,12 +245,13 @@ export default class FireCryptReference {
     if (args.length > 1) {
       const originalOnComplete = args[1];
       args[1] = originalOnComplete && ((error, committed, snapshot) => {
-        return originalOnComplete(error, committed, snapshot && new FireCryptSnapshot(snapshot, this._crypto));
+        return originalOnComplete(
+          error, committed, snapshot && new FireCryptSnapshot(snapshot, this._crypto));
       });
     }
     return this._ref.transaction.apply(encryptedRef, args).then((result) => {
       result.snapshot = result.snapshot && new FireCryptSnapshot(result.snapshot, this._crypto);
       return result;
     });
-  };
+  }
 }
