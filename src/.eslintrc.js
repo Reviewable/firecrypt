@@ -1,14 +1,14 @@
 module.exports = {
   env: {
     node: true,
-    browser: true
+    browser: true,
+    es6: true
   },
   parserOptions: {
     ecmaVersion: 6,
     sourceType: 'module'
   },
   globals: {
-    Promise: false,
     LRUCache: true,
     CryptoJS: true
   },
