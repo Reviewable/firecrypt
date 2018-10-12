@@ -1,12 +1,12 @@
 {
   "name": "firecrypt",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "homepage": "https://github.com/pkaminski/firecrypt",
   "authors": [
     "Piotr Kaminski <piotr@ideanest.com>"
   ],
   "description": "Transparent encryption for Firebase",
-  "main": "dist/browser/firecrypt.min.js",
+  "main": "dist/browser/firecrypt.js",
   "keywords": [
     "firebase",
     "encryption"

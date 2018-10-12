@@ -1,8 +1,9 @@
 {
   "name": "firecrypt",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
+  "browser": "dist/browser/firecrypt.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rollup -c rollup.config.js"
