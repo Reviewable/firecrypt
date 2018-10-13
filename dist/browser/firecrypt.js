@@ -1,4 +1,4 @@
-(function () {
+var firecrypt = (function () {
   'use strict';
 
   var Crypto = function Crypto(options, spec) {
@@ -793,7 +793,27 @@
   Object.defineProperties( FireCryptReference.prototype, prototypeAccessors$2 );
   Object.defineProperties( FireCryptReference, staticAccessors );
 
-  var patchFirebaseDatabaseApi = function (fb) {
+  function patchFirebase() {
+    if (typeof require !== 'undefined') {
+      var numApisFound = 0;
+      try {
+        patchFirebaseDatabaseApi(require('firebase-admin'));
+        numApisFound++;
+      } catch (e) {/* ignore */}
+      try {
+        patchFirebaseDatabaseApi(require('firebase'));
+        numApisFound++;
+      } catch (e) {/* ignore */}
+      if (!numApisFound) { throw new Error('No Firebase SDK detected.'); }
+    } else if (typeof firebase !== 'undefined') {  // eslint-disable-line no-negated-condition
+      /* globals firebase */
+      patchFirebaseDatabaseApi(firebase);
+    } else {
+      throw new Error('No Firebase SDK detected.');
+    }
+  }
+
+  function patchFirebaseDatabaseApi(fb) {
     // We want to wrap all instances of the Firebase database() with FireCrypt.  These are always
     // eventually instantiated via an App's database() function, so we'd like to override that.
     // However, we can't get at the App prototype directly so instead we patch initializeApp(),
@@ -817,20 +837,13 @@
       Object.defineProperty(fb, 'initializeApp', {value: originalInitializeApp});
       return app;
     }, configurable: true});
-  };
+  }
 
   if (typeof require !== 'undefined') {
-    if (typeof LRUCache === 'undefined') { global.LRUCache = require('lru-cache'); }
     if (typeof CryptoJS === 'undefined') { global.CryptoJS = require('crypto-js/core'); }
     require('crypto-js/enc-base64');
     require('cryptojs-extension/build_node/siv');
-    var admin = require('firebase-admin');
-    patchFirebaseDatabaseApi(admin);
-  } else if (typeof firebase !== 'undefined') {  // eslint-disable-line no-negated-condition
-    /* globals firebase */
-    patchFirebaseDatabaseApi(firebase);
-  } else {
-    throw new Error('The Firebase web client SDK must be loaded before FireCrypt.');
+    if (typeof LRUCache === 'undefined') { global.LRUCache = require('lru-cache'); }
   }
 
   CryptoJS.enc.Base64UrlSafe = {
@@ -965,6 +978,8 @@
   };
 
   Object.defineProperties( FireCrypt.prototype, prototypeAccessors$3 );
+
+  return patchFirebase;
 
 }());
 //# sourceMappingURL=firecrypt.js.map
