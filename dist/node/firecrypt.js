@@ -1,5 +1,7 @@
 'use strict';
 
+Object.defineProperty(exports, '__esModule', { value: true });
+
 class Crypto {
   constructor(options, spec) {
     this._spec = this._cleanSpecification(spec);
@@ -808,10 +810,10 @@ function patchFirebaseDatabaseApi(fb) {
 }
 
 if (typeof require !== 'undefined') {
+  if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
   if (typeof CryptoJS === 'undefined') global.CryptoJS = require('crypto-js/core');
   require('crypto-js/enc-base64');
   require('cryptojs-extension/build_node/siv');
-  if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
 }
 
 CryptoJS.enc.Base64UrlSafe = {
@@ -942,5 +944,5 @@ class FireCrypt {
   }
 }
 
-module.exports = patchFirebase;
+exports.patchFirebase = patchFirebase;
 //# sourceMappingURL=firecrypt.js.map

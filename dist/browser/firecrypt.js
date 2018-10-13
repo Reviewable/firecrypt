@@ -1,4 +1,4 @@
-var firecrypt = (function () {
+var firecrypt = (function (exports) {
   'use strict';
 
   var Crypto = function Crypto(options, spec) {
@@ -840,10 +840,10 @@ var firecrypt = (function () {
   }
 
   if (typeof require !== 'undefined') {
+    if (typeof LRUCache === 'undefined') { global.LRUCache = require('lru-cache'); }
     if (typeof CryptoJS === 'undefined') { global.CryptoJS = require('crypto-js/core'); }
     require('crypto-js/enc-base64');
     require('cryptojs-extension/build_node/siv');
-    if (typeof LRUCache === 'undefined') { global.LRUCache = require('lru-cache'); }
   }
 
   CryptoJS.enc.Base64UrlSafe = {
@@ -979,7 +979,9 @@ var firecrypt = (function () {
 
   Object.defineProperties( FireCrypt.prototype, prototypeAccessors$3 );
 
-  return patchFirebase;
+  exports.patchFirebase = patchFirebase;
 
-}());
+  return exports;
+
+}({}));
 //# sourceMappingURL=firecrypt.js.map

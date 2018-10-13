@@ -1,4 +1,4 @@
-export default function patchFirebase() {
+export function patchFirebase() {
   if (typeof require !== 'undefined') {
     let numApisFound = 0;
     try {
