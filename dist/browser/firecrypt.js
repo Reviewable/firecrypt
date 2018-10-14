@@ -816,27 +816,21 @@ var firecrypt = (function (exports) {
   function patchFirebaseDatabaseApi(fb) {
     // We want to wrap all instances of the Firebase database() with FireCrypt.  These are always
     // eventually instantiated via an App's database() function, so we'd like to override that.
-    // However, we can't get at the App prototype directly so instead we patch initializeApp(),
-    // which must be called for an app instance to become available, and patch the App prototype
-    // on the first call.  Once the prototype is patched, we can restore the original initializeApp.
-    var originalInitializeApp = fb.initializeApp;
-    Object.defineProperty(fb, 'initializeApp', {value: function value() {
-      var app = originalInitializeApp.apply(this, arguments);
-      var originalDatabase = app.constructor.prototype.database;
-      Object.defineProperty(app.constructor.prototype, 'database', {value: function value() {
-        // The database() call caches databases by URL and can return the same instance on separate
-        // calls.  Ensure that there's a 1-to-1 correspondance between database instances and
-        // FireCrypt wrappers by associating a wrapper with its underlying database.
-        var db = originalDatabase.apply(this, arguments);
-        if (!db.firecrypt) {
-          // eslint-disable-next-line no-use-before-define
-          Object.defineProperty(db, 'firecrypt', {value: new FireCrypt(db)});
-        }
-        return db.firecrypt;
-      }});
-      Object.defineProperty(fb, 'initializeApp', {value: originalInitializeApp});
-      return app;
-    }, configurable: true});
+    // We issue a bogus initializeApp() call with no config and a unique app name to get at the App's
+    // prototype, and make sure not to instantiate any services on it (as that would fail).
+    var app = fb.initializeApp(undefined, 'firecrypt_init_patch');
+    var originalDatabase = app.constructor.prototype.database;
+    Object.defineProperty(app.constructor.prototype, 'database', {value: function value() {
+      // The database() call caches databases by URL and can return the same instance on separate
+      // calls.  Ensure that there's a 1-to-1 correspondance between database instances and
+      // FireCrypt wrappers by associating a wrapper with its underlying database.
+      var db = originalDatabase.apply(this, arguments);
+      if (!db.firecrypt) {
+        // eslint-disable-next-line no-use-before-define
+        Object.defineProperty(db, 'firecrypt', {value: new FireCrypt(db)});
+      }
+      return db.firecrypt;
+    }});
   }
 
   if (typeof require !== 'undefined') {
