@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "crypto-js": "^3.1.9-1",
-    "cryptojs-extension": "pkaminski/cryptojs-extension",
+    "cryptojs-extension": "reviewable/cryptojs-extension",
     "serialized-lru-cache": "^3.1.0"
   },
   "peerDependencies": {

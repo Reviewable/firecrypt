@@ -469,9 +469,9 @@ crypto-js@^3.1.9-1:
   resolved "https://registry.yarnpkg.com/crypto-js/-/crypto-js-3.1.9-1.tgz#fda19e761fc077e01ffbfdc6e9fdfc59e8806cd8"
   integrity sha1-/aGedh/Ad+Af+/3G6f38WeiAbNg=
 
-cryptojs-extension@pkaminski/cryptojs-extension:
+cryptojs-extension@reviewable/cryptojs-extension:
   version "0.2.0-dev"
-  resolved "https://codeload.github.com/pkaminski/cryptojs-extension/tar.gz/4cf6b3b084d77cb27008baac2ecc33c6d51c9189"
+  resolved "https://codeload.github.com/reviewable/cryptojs-extension/tar.gz/4cf6b3b084d77cb27008baac2ecc33c6d51c9189"
   dependencies:
     crypto-js "^3.1.9-1"
 
