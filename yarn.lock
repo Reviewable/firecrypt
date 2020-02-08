@@ -746,10 +746,10 @@ fill-range@^2.1.0:
     repeat-element "^1.1.2"
     repeat-string "^1.5.2"
 
-firebase-childrenkeys@2.x:
-  version "2.0.2"
-  resolved "https://registry.yarnpkg.com/firebase-childrenkeys/-/firebase-childrenkeys-2.0.2.tgz#e80ceb8c01db49d355d9482fbe07cc5c97a9fd24"
-  integrity sha512-Sd7+yNrQNUB2unaTrOTw50SXrfWtnMmJG2YCDrRSAEcTthBtgpQWNwIeVBkMAQcEU2dP39xRtGRpP0qjaqtYfw==
+firebase-childrenkeys@^2.0.0:
+  version "2.0.4"
+  resolved "https://registry.yarnpkg.com/firebase-childrenkeys/-/firebase-childrenkeys-2.0.4.tgz#c535c18728edcd89f054f584eaf7f823063719b3"
+  integrity sha512-jTxNBFG5gzTXVhu531IM9sWtjBmHTKKzW0nGIto3ruAp2d4cqdz73dJqxz25q6eyKMP6SE6+Xjs/bLkYIH7eVQ==
   dependencies:
     request "^2.81.0"
 
