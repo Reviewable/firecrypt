@@ -21,8 +21,6 @@ var firecrypt = (function (exports) {
   };
 
   Crypto.prototype._cleanSpecification = function _cleanSpecification (def, path) {
-      var this$1 = this;
-
     var keys = Object.keys(def);
     for (var i$1 = 0, list$1 = keys; i$1 < list$1.length; i$1 += 1) {
       var key = list$1[i$1];
@@ -41,7 +39,7 @@ var firecrypt = (function (exports) {
         if (/[\x00-\x1f\x7f\x91\x92.#[\]/]/.test(key) || /[$]/.test(key.slice(1))) {
           throw new Error(("Illegal character in specification key: " + key));
         }
-        this$1._cleanSpecification(def[key], (path || '') + '/' + key);
+        this._cleanSpecification(def[key], (path || '') + '/' + key);
       }
       switch (key.charAt(0)) {
         case '$':
@@ -74,15 +72,13 @@ var firecrypt = (function (exports) {
   };
 
   Crypto.prototype.encryptPath = function encryptPath (path, def) {
-      var this$1 = this;
-
     def = def || this._spec.rules;
     path = path.slice();
     for (var i = 0; i < path.length; i++) {
       def = def[path[i]] || def.$;
       if (!def) { break; }
       if (def['.encrypt'] && def['.encrypt'].key) {
-        path[i] = this$1.encrypt(path[i], 'string', def['.encrypt'].key);
+        path[i] = this.encrypt(path[i], 'string', def['.encrypt'].key);
       }
     }
     return path;
@@ -94,12 +90,10 @@ var firecrypt = (function (exports) {
   };
 
   Crypto.prototype.decryptRef = function decryptRef (ref) {
-      var this$1 = this;
-
     var path = this.refToPath(ref, true);
     var changed = false;
     for (var i = 0; i < path.length; i++) {
-      var decryptedPathSegment = this$1.decrypt(path[i]);
+      var decryptedPathSegment = this.decrypt(path[i]);
       if (decryptedPathSegment !== path[i]) {
         path[i] = decryptedPathSegment;
         changed = true;
@@ -128,8 +122,6 @@ var firecrypt = (function (exports) {
   };
 
   Crypto.prototype.transformTree = function transformTree (value, def, transform) {
-      var this$1 = this;
-
     if (!def) { return value; }
     var type = this.getType(value);
     var i;
@@ -147,8 +139,8 @@ var firecrypt = (function (exports) {
           var keyParts = key.split('/');
           subDef = def;
           for (i = 0; i < keyParts.length; i++) {
-            if (transform === this$1.decrypt) {
-              keyParts[i] = this$1.decrypt(keyParts[i]);
+            if (transform === this.decrypt) {
+              keyParts[i] = this.decrypt(keyParts[i]);
               subDef = subDef && (subDef[keyParts[i]] || subDef.$);
             } else {
               subDef = subDef && (subDef[keyParts[i]] || subDef.$);
@@ -158,8 +150,8 @@ var firecrypt = (function (exports) {
             }
           }
           key = keyParts.join('/');
-        } else if (transform === this$1.decrypt) {
-          key = this$1.decrypt(key);
+        } else if (transform === this.decrypt) {
+          key = this.decrypt(key);
           subDef = def[key] || def.$;
         } else {
           subDef = def[key] || def.$;
@@ -167,12 +159,12 @@ var firecrypt = (function (exports) {
             key = transform(key, 'string', subDef['.encrypt'].key);
           }
         }
-        transformedValue[key] = this$1.transformTree(subValue, subDef, transform);
+        transformedValue[key] = this.transformTree(subValue, subDef, transform);
       }
       value = transformedValue;
     } else if (type === 'array') {
       if (!def.$) { return value; }
-      for (i = 0; i < value.length; i++) { value[i] = this$1.transformTree(value[i], def.$, transform); }
+      for (i = 0; i < value.length; i++) { value[i] = this.transformTree(value[i], def.$, transform); }
     }
     return value;
   };
@@ -453,8 +445,6 @@ var firecrypt = (function (exports) {
   };
 
   FireCryptQuery.prototype._orderBy = function _orderBy (methodName, by, childKey) {
-      var this$1 = this;
-
     var def = this._crypto.specForPath(this._crypto.refToPath(this.ref));
     var order = {by: by};
 
@@ -469,11 +459,11 @@ var firecrypt = (function (exports) {
           if (subDef['.encrypt'].value) { order.valueEncrypted = subDef['.encrypt'].value; }
         }
         if (childKey) {
-          var childDef = this$1._crypto.specForPath(childPath, subDef);
+          var childDef = this._crypto.specForPath(childPath, subDef);
           if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
             order.childEncrypted = childDef['.encrypt'].value;
           }
-          var encryptedChildKeyCandidate = this$1._crypto.encryptPath(childPath, subDef).join('/');
+          var encryptedChildKeyCandidate = this._crypto.encryptPath(childPath, subDef).join('/');
           if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
             throw new Error(
               'Incompatible encryption specifications for orderByChild("' + childKey + '")');

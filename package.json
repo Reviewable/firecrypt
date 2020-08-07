@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
   "browser": "dist/browser/firecrypt.js",
@@ -32,15 +32,15 @@
   },
   "peerDependencies": {
     "firebase": "5.x || 6.x || 7.x",
-    "firebase-admin": "5.x || 6.x || 7.x || 8.x"
+    "firebase-admin": "5.x || 6.x || 7.x || 8.x || 9.x"
   },
   "optionalDependencies": {
     "firebase-childrenkeys": "^2.0.0"
   },
   "devDependencies": {
     "babel-core": "^6.26.3",
-    "eslint": "^5.6.1",
-    "rollup": "^0.63.4",
+    "eslint": "7.x",
+    "rollup": "2.x",
     "rollup-plugin-buble": "^0.19.2",
     "rollup-plugin-minify-es": "^1.1.1"
   }

@@ -13,8 +13,7 @@ const sharedConfig = {
 
 const nodeConfig = {...sharedConfig};
 nodeConfig.output = {
-  dir: path.resolve(__dirname, 'dist/node'),
-  file: 'firecrypt.js',
+  file: path.resolve(__dirname, 'dist/node/firecrypt.js'),
   name: 'firecrypt',
   format: 'cjs',
   sourcemap: true,
@@ -27,8 +26,7 @@ const unminifiedBrowserConfig = {
   ...sharedConfig
 };
 unminifiedBrowserConfig.output = {
-  dir: path.resolve(__dirname, 'dist/browser'),
-  file: 'firecrypt.js',
+  file: path.resolve(__dirname, 'dist/browser/firecrypt.js'),
   name: 'firecrypt',
   format: 'iife',
   sourcemap: true,
@@ -42,8 +40,7 @@ const minifiedBrowserConfig = {
   ...sharedConfig
 };
 minifiedBrowserConfig.output = {
-  dir: path.resolve(__dirname, 'dist/browser'),
-  file: 'firecrypt.min.js',
+  file: path.resolve(__dirname, 'dist/browser/firecrypt.min.js'),
   name: 'firecrypt',
   format: 'iife',
   sourcemap: true,
