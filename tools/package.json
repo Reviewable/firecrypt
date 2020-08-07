@@ -37,7 +37,7 @@
     "lodash": "^4.15.0",
     "lru-cache": "^4.0.1",
     "ms": "^0.7.1",
-    "nodefire": "^0.6.2",
+    "nodefire": "^3.0.0",
     "pace": "0.0.4",
     "request": "^2.74.0",
     "stream-to-promise": "^2.2.0"
