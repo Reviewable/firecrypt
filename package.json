@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
   "browser": "dist/browser/firecrypt.js",
@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "crypto-js": "^4.0.0",
-    "cryptojs-extension": "reviewable/cryptojs-extension",
+    "cryptojs-extension": "github:reviewable/cryptojs-extension",
     "serialized-lru-cache": "^3.1.0"
   },
   "peerDependencies": {
