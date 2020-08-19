@@ -22,11 +22,11 @@ const caches = {
   encryptOld: new LRUCache({max: CACHE_SIZE, length: computeCacheItemSize}),
   decrypt: new LRUCache({max: CACHE_SIZE, length: computeCacheItemSize})
 };
-_.each(caches, cache => {cache.stats = {hits: 0, misses: 0};});
+_.forEach(caches, cache => {cache.stats = {hits: 0, misses: 0};});
 
 let oldSiv, newSiv, spec;
 let numCalls = 0;
-_.extend(exports, {traverseWildcard, traverseSpec, traverseSmall, transformSmall});
+_.assign(exports, {traverseWildcard, traverseSpec, traverseSmall, transformSmall});
 
 process.on('message', msg => {
   switch (msg.cmd) {
@@ -53,7 +53,7 @@ function callMaster() {
 
 function traverseWildcard(specPath, oldPath, newPath, copy, keys) {
   const def = defForPath(specPath);
-  _.each(keys, oldKey => {
+  _.forEach(keys, oldKey => {
     const key = decrypt(oldKey);
     if (key === ALREADY_RECRYPTED) return;
     const subDef = def[key] || def.$;
@@ -74,7 +74,7 @@ function traverseWildcard(specPath, oldPath, newPath, copy, keys) {
 
 function traverseSpec(specPath, oldPath, newPath, copy) {
   const def = defForPath(specPath);
-  _.each(_.keys(def), key => {
+  _.forEach(_.keys(def), key => {
     if (key === '.encrypt') return;
     const keyFlags = def[key]['.encrypt'] || {};
     const subCopy = copy || keyFlags.key || keyFlags.value;
@@ -96,7 +96,7 @@ function traverseSmall(specPath, oldPath, newPath, value) {
   const def = defForPath(specPath);
   const flags = def['.encrypt'] || {};
   if (flags.children) {
-    _.each(_.keys(value), oldKey => {
+    _.forEach(_.keys(value), oldKey => {
       const key = decrypt(oldKey);
       if (key === ALREADY_RECRYPTED) return;
       const subDef = def[key] || def.$;
@@ -126,7 +126,7 @@ function transformSmallHelper(def, value) {
   const flags = def['.encrypt'] || {};
   if (flags.children) {
     let allAlreadyRecrypted = true;
-    _.each(_.keys(value), oldKey => {
+    _.forEach(_.keys(value), oldKey => {
       const key = decrypt(oldKey);
       if (key === ALREADY_RECRYPTED) return;
       const subDef = def[key] || def.$;
@@ -264,7 +264,7 @@ function encryptValue(value, type, siv) {
     case 'number': value = '' + value; break;
     case 'boolean': value = value ? 't' : 'f'; break;
   }
-  return '\x91' + type.charAt(0).toUpperCase() + encryptString(value, siv) + '\x92';
+  return '\x91' + _.toUpper(type.charAt(0)) + encryptString(value, siv) + '\x92';
 }
 
 function encryptString(str, siv) {
@@ -272,7 +272,7 @@ function encryptString(str, siv) {
 }
 
 function getType(value) {
-  if (Array.isArray(value)) return 'array';
+  if (_.isArray(value)) return 'array';
   let type = typeof value;
   if (type === 'object') {
     if (value instanceof String) type = 'string';
@@ -304,5 +304,5 @@ function defForPath(path) {
 }
 
 function computeCacheItemSize(value, key) {
-  return key.length + (typeof value === 'string' ? value.length : 4);
+  return key.length + (_.isString(value) ? value.length : 4);
 }

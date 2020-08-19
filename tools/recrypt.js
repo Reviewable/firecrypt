@@ -2,8 +2,8 @@
 'use strict';
 
 const _ = require('lodash');
+const admin = require('firebase-admin');
 const childProcess = require('child_process');
-const co = require('co');
 const commandLineArgs = require('command-line-args');
 const fs = require('fs');
 const getUsage = require('command-line-usage');
@@ -11,7 +11,6 @@ const HttpsAgent = require('agentkeepalive').HttpsAgent;
 const ms = require('ms');
 const NodeFire = require('nodefire');
 const os = require('os');
-const request = require('request');
 const streamToPromise = require('stream-to-promise');
 
 NodeFire.setCacheSize(0);
@@ -22,7 +21,7 @@ const commandLineOptions = [
     description: 'The unique id of the target realtime database (required).'},
   {name: 'auth', alias: 'a',
     typeLabel: '[underline]{secret}',
-    description: 'A master secret to authenticate with for the target database (required).'},
+    description: 'A JSON file with credentials for the database (required).'},
   {name: 'spec', alias: 's',
     typeLabel: '[underline]{file}',
     description: 'The firecrypt rules JSON file (required).'},
@@ -76,12 +75,10 @@ try {
   process.exit(1);
 }
 
-_.extend(exports, {traverse, queueUpdates});
+_.assign(exports, {traverse, queueUpdates});
 
 const logWriteStream = args.log ? fs.createWriteStream(args.log) : null;
-const firebaseUrl = 'https://' + args.firebase + '.firebaseio.com';
-const firebaseAuth = args.auth;
-const db = new NodeFire(firebaseUrl);
+const db = new NodeFire(initializeFirebase(args.firebase, args.auth));
 
 const agent = new HttpsAgent({
   keepAliveMsecs: ms('1s'), keepAliveTimeout: ms('15s'), timeout: ms('30s'),
@@ -115,7 +112,7 @@ class UpdateQueue {
       this._flush();
     }
     log('queueUpdates', size);
-    _.extend(this._batch, updates);
+    _.assign(this._batch, updates);
     this._batchSize += size;
   }
 
@@ -130,17 +127,17 @@ class UpdateQueue {
   _refresh() {
     while (this._updatesInFlight < MAX_UPDATES_IN_FLIGHT && this._queue.length) {
       this._updatesInFlight += 1;
-      co(this._send(this._queue.shift())).catch(handleFatalError);
+      this._send(this._queue.shift()).catch(handleFatalError);
     }
     if (this._resolveDrainPromise && !this._updatesInFlight && !this._queue.length) {
       this._resolveDrainPromise();
     }
   }
 
-  *_send(updates) {
+  async _send(updates) {
     for (let tries = 0; tries < MAX_UPDATE_TRIES; tries++) {
       try {
-        yield db.update(updates);
+        await db.update(updates);
       } catch (e) {
         log('Retrying update due to', e);
         this._stats.retries += 1;
@@ -251,10 +248,9 @@ class CommandQueue {
   }
 
   waitFor(callResult) {
-    if (callResult && typeof callResult.next === 'function' &&
-        typeof callResult.throw === 'function') {
+    if (callResult) {
       this._numPendingCalls++;
-      co(callResult).then(() => {
+      callResult.then(() => {
         this._numPendingCalls--;
         this.refresh();
       }, handleFatalError);
@@ -319,26 +315,27 @@ class Worker {
 }
 
 
-co(function*() {
-  yield db.auth(firebaseAuth);
+async function run() {
   _.times(args.cpus, i => {workers.push(new Worker(i + 1));});
-  yield traverse('', '', '');
-  yield commandQueue.drain();
-  yield updateQueue.drain();
+  await traverse('', '', '');
+  await commandQueue.drain();
+  await updateQueue.drain();
   pace.op();
   if (logWriteStream) {
     const logPromise = streamToPromise(logWriteStream);
     logWriteStream.end();
-    yield logPromise;
+    await logPromise;
   }
-}).then(() => {
+}
+
+run().then(() => {
   process.exit(0);
 }, handleFatalError);
 
 
 function expandSpecification(def, path) {
   const flags = def['.encrypt'] || {};
-  _.each(_.keys(def), key => {
+  _.forEach(_.keys(def), key => {
     if (key === '.encrypt') {
       const badSubKeys = _.reject(
         _.keys(def[key]), subKey => _.includes(['key', 'value', 'few', 'big', 'children'], subKey));
@@ -367,25 +364,26 @@ function expandSpecification(def, path) {
   return def;
 }
 
-function *traverse(specPath, oldPath, newPath, copy) {
+async function traverse(specPath, oldPath, newPath, copy) {
   const def = defForPath(specPath);
+  const oldChild = db.child(oldPath);
   try {
     const flags = def['.encrypt'] || {};
     if (copy && !flags.big) {
       pace.total += 1;
-      const leaf = yield db.child(oldPath).get();
+      const leaf = await oldChild.get();
       pace.op();
       if (leaf) commandQueue.add('transformSmall', specPath, oldPath, newPath, leaf);
     } else if (def.$) {
       if (flags.big) {
-        const keys = yield requestKeys(oldPath);
-        _.each(_.chunk(keys, WILDCARD_KEYS_CHUNK_SIZE), keysChunk => {
+        const keys = await requestKeys(oldChild);
+        _.forEach(_.chunk(keys, WILDCARD_KEYS_CHUNK_SIZE), keysChunk => {
           commandQueue.add('traverseWildcard', specPath, oldPath, newPath, copy, keysChunk);
         });
       } else {
         // !flags.big && !copy
         pace.total += 1;
-        const leaf = yield db.child(oldPath).get();
+        const leaf = await oldChild.get();
         pace.op();
         if (leaf) commandQueue.add('traverseSmall', specPath, oldPath, newPath, leaf);
       }
@@ -401,42 +399,53 @@ function *traverse(specPath, oldPath, newPath, copy) {
 }
 
 
-function requestKeys(path) {
+const childrenKeysOptions = {maxTries: 3, retryInterval: ms('1s'), agent};
+
+async function requestKeys(ref) {
   pace.total += 1;
-  return new Promise((resolve, reject) => {
-    let tries = 0;
-    const uriPath =
-      '/' + _(path.split('/')).compact().map(part => encodeURIComponent(part)).join('/');
-    const req = () => {
-      log('requestKeys', path);
-      request({
-        uri: firebaseUrl + uriPath + '.json', qs: {auth: firebaseAuth, shallow: true}, agent
-      }, (error, response, data) => {
-        if (!error) {
-          try {
-            const regex = /"(.*?)"/g, keys = [];
-            let match;
-            // eslint-disable-next-line no-cond-assign
-            while (match = regex.exec(data)) keys.push(match[1]);  // don't unescape keys!
-            pace.op();
-            resolve(keys);
-          } catch (e) {
-            error = e;
-          }
-        }
-        if (error) {
-          log('requestKeys', path, error);
-          if (++tries <= 3) req(); else {pace.op(); reject(error);}
-        }
-      });
-    };
-    req();
-  });
+  try {
+    log('requestKeys', ref.path());
+    return await ref.childrenKeys(childrenKeysOptions);
+  } catch (e) {
+    log('requestKeys', ref.path(), e);
+    throw e;
+  } finally {
+    pace.op();
+  }
 }
 
 function defForPath(path) {
   if (!path) return spec;
   return _.reduce(path.split('/'), (def, segment) => def[segment], spec);
+}
+
+function initializeFirebase(firebaseId, credentialsFilename) {
+  const firebaseConfig = {
+    databaseURL: `https://${firebaseId}.firebaseio.com`,
+    databaseAuthVariableOverride: {uid: 'server'},
+  };
+
+  let fileIssue;
+  if (!fs.existsSync(credentialsFilename)) {
+    fileIssue = 'does not exist';
+  } else if (fs.lstatSync(credentialsFilename).isDirectory()) {
+    fileIssue = 'is a directory, not a file';
+  }
+
+  if (fileIssue) {
+    throw new Error(
+      `Unable to authenticate the Firebase Admin SDK. The path to a Firebase service account key \
+JSON file specified via the REVIEWABLE_FIREBASE_CREDENTIALS_FILE environment variable \
+(${credentialsFilename}) ${fileIssue}. Navigate to \
+https://console.firebase.google.com/u/0/project/_/settings/serviceaccounts/adminsdk to generate \
+that file and make sure the specified path is correct.`
+    );
+  }
+
+  const serviceAccount = JSON.parse(fs.readFileSync(credentialsFilename));
+  firebaseConfig.credential = admin.credential.cert(serviceAccount);
+  admin.initializeApp(firebaseConfig);
+  return admin.database().ref();
 }
 
 function log() {
