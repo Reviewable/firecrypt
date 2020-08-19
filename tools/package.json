@@ -1,6 +1,6 @@
 {
   "name": "firecrypt-tools",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Utilities for managing a Firebase encrypted with firecrypt",
   "main": "recrypt.js",
   "bin": {
@@ -28,18 +28,21 @@
   },
   "homepage": "https://github.com/pkaminski/firecrypt#readme",
   "dependencies": {
-    "agentkeepalive": "^2.2.0",
-    "co": "^4.6.0",
-    "command-line-args": "^3.0.1",
-    "command-line-usage": "^3.0.3",
-    "crypto-js": "^3.1.7",
-    "cryptojs-extension": "pkaminski/cryptojs-extension",
-    "lodash": "^4.15.0",
-    "lru-cache": "^4.0.1",
-    "ms": "^0.7.1",
-    "nodefire": "^0.6.2",
+    "agentkeepalive": "^4.1.3",
+    "command-line-args": "^5.1.1",
+    "command-line-usage": "^6.1.0",
+    "crypto-js": "^4.0.0",
+    "cryptojs-extension": "github:pkaminski/cryptojs-extension",
+    "firebase-admin": "^9.1.0",
+    "lodash": "^4.17.20",
+    "lru-cache": "^6.0.0",
+    "ms": "^2.1.2",
+    "nodefire": "^3.0.0",
     "pace": "0.0.4",
-    "request": "^2.74.0",
-    "stream-to-promise": "^2.2.0"
+    "stream-to-promise": "^3.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^7.7.0",
+    "eslint-plugin-lodash": "^7.1.0"
   }
 }
