@@ -1,5 +1,5 @@
 import path from 'path';
-import buble from 'rollup-plugin-buble';
+import buble from '@rollup/plugin-buble';
 import minify from 'rollup-plugin-minify-es';
 
 const sharedConfig = {

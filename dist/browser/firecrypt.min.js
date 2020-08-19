@@ -793,7 +793,7 @@ var firecrypt = (function (exports) {
       try {
         patchFirebaseDatabaseApi(require('firebase'));
         numApisFound++;
-      } catch (e) {/* ignore */}
+      } catch (e$1) {/* ignore */}
       if (!numApisFound) { throw new Error('No Firebase SDK detected.'); }
     } else if (typeof firebase !== 'undefined') {  // eslint-disable-line no-negated-condition
       /* globals firebase */

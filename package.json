@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "2.0.9",
+  "version": "2.1.0",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
   "browser": "dist/browser/firecrypt.js",
@@ -26,7 +26,7 @@
     "node": ">=8.x"
   },
   "dependencies": {
-    "crypto-js": "^3.1.9-1",
+    "crypto-js": "^4.0.0",
     "cryptojs-extension": "reviewable/cryptojs-extension",
     "serialized-lru-cache": "^3.1.0"
   },
@@ -38,10 +38,10 @@
     "firebase-childrenkeys": "^2.0.0"
   },
   "devDependencies": {
+    "@rollup/plugin-buble": "^0.21.3",
     "babel-core": "^6.26.3",
-    "eslint": "7.x",
-    "rollup": "2.x",
-    "rollup-plugin-buble": "^0.19.2",
+    "eslint": "^7.7.0",
+    "rollup": "^2.26.4",
     "rollup-plugin-minify-es": "^1.1.1"
   }
 }
