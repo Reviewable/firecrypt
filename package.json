@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
   "browser": "dist/browser/firecrypt.js",
@@ -35,7 +35,7 @@
     "firebase-admin": "5.x || 6.x || 7.x || 8.x || 9.x"
   },
   "optionalDependencies": {
-    "firebase-childrenkeys": "^2.0.0"
+    "firebase-childrenkeys": "2.x || 3.x"
   },
   "devDependencies": {
     "@rollup/plugin-buble": "^0.21.3",
