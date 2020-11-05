@@ -9,7 +9,7 @@ const fs = require('fs');
 const getUsage = require('command-line-usage');
 const HttpsAgent = require('agentkeepalive').HttpsAgent;
 const ms = require('ms');
-const NodeFire = require('nodefire');
+const NodeFire = require('nodefire').default;
 const os = require('os');
 const streamToPromise = require('stream-to-promise');
 
@@ -17,27 +17,27 @@ NodeFire.setCacheSize(0);
 
 const commandLineOptions = [
   {name: 'firebase', alias: 'f',
-    typeLabel: '[underline]{database}',
+    typeLabel: '{underline database}',
     description: 'The unique id of the target realtime database (required).'},
   {name: 'auth', alias: 'a',
-    typeLabel: '[underline]{secret}',
+    typeLabel: '{underline file}',
     description: 'A JSON file with credentials for the database (required).'},
   {name: 'spec', alias: 's',
-    typeLabel: '[underline]{file}',
+    typeLabel: '{underline file}',
     description: 'The firecrypt rules JSON file (required).'},
   {name: 'oldKey', alias: 'o',
-    typeLabel: '[underline]{base64key}',
+    typeLabel: '{underline base64key}',
     description: 'The old encryption key to be replaced.'},
   {name: 'newKey', alias: 'n',
-    typeLabel: '[underline]{base64key}',
+    typeLabel: '{underline base64key}',
     description: 'The new encryption key to use.'},
   {name: 'cpus', alias: 'c', defaultValue: os.cpus().length,
-    typeLabel: '[underline]{number}',
+    typeLabel: '{underline number}',
     description: 'The number of CPUs to use (defaults to all available).'},
   {name: 'help', alias: 'h',
     description: 'Display these usage instructions.'},
   {name: 'log', alias: 'l',
-    typeLabel: '[underline]{file}',
+    typeLabel: '{underline file}',
     description: 'Stream logging messages to a file for debugging.'}
 ];
 
@@ -58,7 +58,7 @@ const MILLION = 1048576;
 
 
 const args = commandLineArgs(commandLineOptions);
-if (args.help) {
+if ('help' in args) {
   console.log(getUsage(usageSpec));
   process.exit(0);
 }
@@ -81,7 +81,7 @@ const logWriteStream = args.log ? fs.createWriteStream(args.log) : null;
 const db = new NodeFire(initializeFirebase(args.firebase, args.auth));
 
 const agent = new HttpsAgent({
-  keepAliveMsecs: ms('1s'), keepAliveTimeout: ms('15s'), timeout: ms('30s'),
+  keepAliveMsecs: ms('1s'), freeSocketTimeout: ms('15s'), timeout: ms('30s'),
   maxSockets: MAX_KEY_REQUESTS_IN_FLIGHT, maxFreeSockets: 1
 });
 
@@ -135,6 +135,7 @@ class UpdateQueue {
   }
 
   async _send(updates) {
+    // log(require('util').inspect(updates, false, 0));
     for (let tries = 0; tries < MAX_UPDATE_TRIES; tries++) {
       try {
         await db.update(updates);
@@ -366,7 +367,7 @@ function expandSpecification(def, path) {
 
 async function traverse(specPath, oldPath, newPath, copy) {
   const def = defForPath(specPath);
-  const oldChild = db.child(oldPath);
+  const oldChild = oldPath ? db.child(oldPath) : db;
   try {
     const flags = def['.encrypt'] || {};
     if (copy && !flags.big) {
@@ -404,10 +405,10 @@ const childrenKeysOptions = {maxTries: 3, retryInterval: ms('1s'), agent};
 async function requestKeys(ref) {
   pace.total += 1;
   try {
-    log('requestKeys', ref.path());
+    log('requestKeys', ref.path);
     return await ref.childrenKeys(childrenKeysOptions);
   } catch (e) {
-    log('requestKeys', ref.path(), e);
+    log('requestKeys', ref.path, e);
     throw e;
   } finally {
     pace.op();
@@ -421,8 +422,7 @@ function defForPath(path) {
 
 function initializeFirebase(firebaseId, credentialsFilename) {
   const firebaseConfig = {
-    databaseURL: `https://${firebaseId}.firebaseio.com`,
-    databaseAuthVariableOverride: {uid: 'server'},
+    databaseURL: `https://${firebaseId}.firebaseio.com`
   };
 
   let fileIssue;
@@ -455,6 +455,7 @@ function log() {
 }
 
 function handleFatalError(e) {
+  log('fatal error', e.stack);
   console.log('\n');
   console.log(e.stack);
   process.exit(1);

@@ -1,7 +1,7 @@
 'use strict';
 
 const _ = require('lodash');
-const NodeFire = require('nodefire');
+const NodeFire = require('nodefire').default;
 const LRUCache = require('lru-cache');
 
 const CryptoJS = require('crypto-js/core');

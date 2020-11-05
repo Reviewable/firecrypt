@@ -6,10 +6,11 @@ Options:
 
 ```
   -f, --firebase database   The unique id of the target realtime database (required).
-  -a, --auth secret         A master secret to authenticate with for the target database (required).
+  -a, --auth file           A JSON file with credentials for the database (required).
   -s, --spec file           The firecrypt rules JSON file (required).
   -o, --oldKey base64key    The old encryption key to be replaced.
   -n, --newKey base64key    The new encryption key to use.
+  -c, --cpus number         the number of CPUs to use (defaults to all available).
   -h, --help                Display these usage instructions.
   -v, --verbose             Turn on verbose logging messages for debugging
 ```
