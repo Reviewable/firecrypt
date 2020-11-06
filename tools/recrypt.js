@@ -11,6 +11,7 @@ const HttpsAgent = require('agentkeepalive').HttpsAgent;
 const ms = require('ms');
 const NodeFire = require('nodefire').default;
 const os = require('os');
+const joinPath = require('path').join;
 const streamToPromise = require('stream-to-promise');
 
 NodeFire.setCacheSize(0);
@@ -269,7 +270,7 @@ class Worker {
     if (args.newKey) initOptions.newKey = args.newKey;
     if (args.oldKey) initOptions.oldKey = args.oldKey;
     this.ready = true;
-    this.child = childProcess.fork('recrypt_worker.js');
+    this.child = childProcess.fork(joinPath(__dirname, 'recrypt_worker.js'));
     this.child.on('message', msg => this.handleMessage(msg));
     this.child.on('exit', ev => this.handleExit(ev));
     this.child.on('error', ev => this.handleError(ev));

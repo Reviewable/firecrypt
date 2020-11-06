@@ -1,6 +1,6 @@
 {
   "name": "firecrypt-tools",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Utilities for managing a Firebase encrypted with firecrypt",
   "main": "recrypt.js",
   "bin": {
