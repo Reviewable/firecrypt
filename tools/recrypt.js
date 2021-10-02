@@ -19,7 +19,7 @@ NodeFire.setCacheSize(0);
 const commandLineOptions = [
   {name: 'firebase', alias: 'f',
     typeLabel: '{underline database}',
-    description: 'The unique id of the target realtime database (required).'},
+    description: 'The URL of the target realtime database (required).'},
   {name: 'auth', alias: 'a',
     typeLabel: '{underline file}',
     description: 'A JSON file with credentials for the database (required).'},
@@ -421,10 +421,8 @@ function defForPath(path) {
   return _.reduce(path.split('/'), (def, segment) => def[segment], spec);
 }
 
-function initializeFirebase(firebaseId, credentialsFilename) {
-  const firebaseConfig = {
-    databaseURL: `https://${firebaseId}.firebaseio.com`
-  };
+function initializeFirebase(firebaseUrl, credentialsFilename) {
+  const firebaseConfig = {databaseURL: firebaseUrl};
 
   let fileIssue;
   if (!fs.existsSync(credentialsFilename)) {

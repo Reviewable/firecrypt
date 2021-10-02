@@ -1,6 +1,6 @@
 {
   "name": "firecrypt-tools",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Utilities for managing a Firebase encrypted with firecrypt",
   "main": "recrypt.js",
   "bin": {
@@ -10,7 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "engines": {
-    "node": "12.x"
+    "node": ">=12.x"
   },
   "repository": {
     "type": "git",
