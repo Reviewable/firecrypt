@@ -126,7 +126,7 @@ export default class Crypto {
     } else if (type === 'object' && value !== null) {
       const transformedValue = {};
       for (let key in value) {
-        if (!value.hasOwnProperty(key)) continue;
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
         const subValue = value[key];
         let subDef;
         if (key.indexOf('/') >= 0) {  // for deep update keys

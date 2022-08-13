@@ -111,7 +111,7 @@ export default class FireCryptQuery {
     if (def) {
       const childPath = childKey && childKey.split('/');
       for (const subKey in def) {
-        if (!def.hasOwnProperty(subKey)) continue;
+        if (!Object.prototype.hasOwnProperty.call(def, subKey)) continue;
         const subDef = def[subKey];
         if (subDef['.encrypt']) {
           if (subDef['.encrypt'].key) order.keyEncrypted = subDef['.encrypt'].key;
