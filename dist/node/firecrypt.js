@@ -169,7 +169,7 @@ class Crypto {
 
   refToPath(ref, encrypted) {
     const root = ref.root;
-    if (ref === root) return [];
+    if (ref.isEqual(root)) return [];
     const pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
     if (!encrypted && pathStr && pathStr.charAt(0) !== '.' &&
         /[\x00-\x1f\x7f\x91\x92.#$[\]]/.test(pathStr)) {  // eslint-disable-line no-control-regex
@@ -277,11 +277,11 @@ class Crypto {
 }
 
 class FireCryptSnapshot {
-  constructor(snap, crypto) {
-    this._ref = crypto.decryptRef(snap.ref);
-    this._path = crypto.refToPath(this._ref);
+  constructor(snap, firecrypt) {
+    this._ref = firecrypt._crypto.decryptRef(snap.ref);
+    this._path = firecrypt._crypto.refToPath(this._ref);
     this._snap = snap;
-    this._crypto = crypto;
+    this._firecrypt = firecrypt;
   }
 
   get key() {
@@ -289,20 +289,20 @@ class FireCryptSnapshot {
   }
 
   get ref() {
-    return new FireCryptReference(this._ref.ref, this._crypto);
+    return new FireCryptReference(this._ref.ref, this._firecrypt);
   }
 
   val() {
-    return this._crypto.transformValue(this._path, this._snap.val(), 'decrypt');
+    return this._firecrypt._crypto.transformValue(this._path, this._snap.val(), 'decrypt');
   }
 
   child(childPath) {
-    return new FireCryptSnapshot(this._snap.child(childPath), this._crypto);
+    return new FireCryptSnapshot(this._snap.child(childPath), this._firecrypt);
   }
 
   forEach(action) {
     return this._snap.forEach((childSnap) => {
-      return action(new FireCryptSnapshot(childSnap), this._crypto);
+      return action(new FireCryptSnapshot(childSnap), this._firecrypt);
     });
   }
 
@@ -311,8 +311,8 @@ class FireCryptSnapshot {
   }
 
   hasChild(childPath) {
-    childPath = this._crypto.encryptPath(
-      childPath.split('/'), this._crypto.specForPath(this._path)).join('/');
+    childPath = this._firecrypt._crypto.encryptPath(
+      childPath.split('/'), this._firecrypt._crypto.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   }
 
@@ -326,16 +326,16 @@ class FireCryptSnapshot {
 
   toJSON() {
     const json = this._snap.toJSON.apply(this._snap, arguments);
-    return this._crypto.transformValue(this._path, json, 'decrypt');
+    return this._firecrypt._crypto.transformValue(this._path, json, 'decrypt');
   }
 }
 
 class FireCryptQuery {
-  constructor(query, order, originalRef, crypto) {
+  constructor(query, order, originalRef, firecrypt) {
     this._query = query;
     this._order = order || {};
     this._originalRef = originalRef || query;
-    this._crypto = crypto;
+    this._firecrypt = firecrypt;
   }
 
   _wrapQueryCallback(callback) {
@@ -343,14 +343,15 @@ class FireCryptQuery {
     const self = this;
     const wrappedCallback = function(snap, previousChildKey) {
       return callback.call(  // eslint-disable-next-line no-invalid-this
-        this, new FireCryptSnapshot(snap, self._crypto), previousChildKey, self._crypto);
+        this, new FireCryptSnapshot(snap, self._firecrypt), previousChildKey, self._firecrypt);
     };
     wrappedCallback.firecryptCallback = wrappedCallback;
     callback.firecryptCallback = wrappedCallback;
   }
 
   get ref() {
-    return new FireCryptReference(this._crypto.decryptRef(this._query.ref), this._crypto);
+    return new FireCryptReference(
+      this._firecrypt._crypto.decryptRef(this._query.ref), this._firecrypt);
   }
 
   on(eventType, callback, cancelCallback, context) {
@@ -370,7 +371,7 @@ class FireCryptQuery {
       this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback,
       context
     ).then((snap) => {
-      return new FireCryptSnapshot(snap, this._crypto);
+      return new FireCryptSnapshot(snap, this._firecrypt);
     });
   }
 
@@ -398,15 +399,15 @@ class FireCryptQuery {
 
   equalTo(value, key) {
     if (this._order[this._order.by + 'Encrypted']) {
-      value = this._crypto.encrypt(
-        value, this._crypto.getType(value), this._order[this._order.by + 'Encrypted']);
+      value = this._firecrypt._crypto.encrypt(
+        value, this._firecrypt._crypto.getType(value), this._order[this._order.by + 'Encrypted']);
     }
     if (key !== undefined && this._order.keyEncrypted) {
-      key = this._crypto.encrypt(key, 'string', this._order.keyEncrypted);
+      key = this._firecrypt._crypto.encrypt(key, 'string', this._order.keyEncrypted);
     }
     return new FireCryptQuery(
       this._originalRef.equalTo.call(this._query, value, key), this._order, this._originalRef,
-      this._crypto
+      this._firecrypt
     );
   }
 
@@ -421,7 +422,7 @@ class FireCryptQuery {
   _delegate(methodName, args) {
     return new FireCryptQuery(
       this._originalRef[methodName].apply(this._query, args), this._order, this._originalRef,
-      this._crypto
+      this._firecrypt
     );
   }
 
@@ -433,7 +434,7 @@ class FireCryptQuery {
   }
 
   _orderBy(methodName, by, childKey) {
-    const def = this._crypto.specForPath(this._crypto.refToPath(this.ref));
+    const def = this._firecrypt._crypto.specForPath(this._firecrypt._crypto.refToPath(this.ref));
     const order = {by};
 
     let encryptedChildKey;
@@ -447,11 +448,12 @@ class FireCryptQuery {
           if (subDef['.encrypt'].value) order.valueEncrypted = subDef['.encrypt'].value;
         }
         if (childKey) {
-          const childDef = this._crypto.specForPath(childPath, subDef);
+          const childDef = this._firecrypt._crypto.specForPath(childPath, subDef);
           if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
             order.childEncrypted = childDef['.encrypt'].value;
           }
-          const encryptedChildKeyCandidate = this._crypto.encryptPath(childPath, subDef).join('/');
+          const encryptedChildKeyCandidate =
+            this._firecrypt._crypto.encryptPath(childPath, subDef).join('/');
           if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
             throw new Error(
               'Incompatible encryption specifications for orderByChild("' + childKey + '")');
@@ -463,11 +465,11 @@ class FireCryptQuery {
     if (childKey) {
       return new FireCryptQuery(
         this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order,
-        this._originalRef, this._crypto
+        this._originalRef, this._firecrypt
       );
     }
     return new FireCryptQuery(
-      this._originalRef[methodName].call(this._query), order, this._originalRef, this._crypto
+      this._originalRef[methodName].call(this._query), order, this._originalRef, this._firecrypt
     );
   }
 }
@@ -517,24 +519,24 @@ try {
 }
 
 class FireCryptReference {
-  constructor(ref, crypto) {
+  constructor(ref, firecrypt) {
     this._ref = ref;
-    this._crypto = crypto;
+    this._firecrypt = firecrypt;
   }
 
   _interceptQuery(methodName, originalArguments) {
-    const encryptedRef = this._crypto.encryptRef(this._ref);
-    const query = new FireCryptQuery(encryptedRef, {}, this._ref, this._crypto);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    const query = new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
     return query[methodName].apply(query, originalArguments);
   }
 
   _interceptWrite(methodName, originalArguments, argIndex) {
-    const encryptedRef = this._crypto.encryptRef(this._ref);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
 
     const args = Array.prototype.slice.call(originalArguments);
     if (argIndex >= 0 && argIndex < args.length) {
-      const path = this._crypto.refToPath(this._ref);
-      args[argIndex] = this._crypto.transformValue(path, args[argIndex], 'encrypt');
+      const path = this._firecrypt._crypto.refToPath(this._ref);
+      args[argIndex] = this._firecrypt._crypto.transformValue(path, args[argIndex], 'encrypt');
     }
 
     return this._ref[methodName].apply(encryptedRef, args);
@@ -574,7 +576,7 @@ class FireCryptReference {
    */
   get ref() {
     if (this._ref.isEqual(this._ref.ref)) return this;
-    return new FireCryptReference(this._ref.ref, this._crypto);
+    return new FireCryptReference(this._ref.ref, this._firecrypt);
   }
 
   /**
@@ -583,7 +585,7 @@ class FireCryptReference {
    */
   get root() {
     if (this._ref.isEqual(this._ref.root)) return this;
-    return new FireCryptReference(this._ref.root, this._crypto);
+    return new FireCryptReference(this._ref.root, this._firecrypt);
   }
 
   /**
@@ -593,7 +595,7 @@ class FireCryptReference {
    */
   get parent() {
     if (this._ref.parent === null) return null;
-    return new FireCryptReference(this._ref.parent, this._crypto);
+    return new FireCryptReference(this._ref.parent, this._firecrypt);
   }
 
   /**
@@ -601,7 +603,7 @@ class FireCryptReference {
    * @return {FireCrypt} The FireCrypt instance associated with this reference.
    */
   get database() {
-    return this._ref.ref.database.firecrypt;
+    return this._firecrypt;
   }
 
   /**
@@ -610,7 +612,7 @@ class FireCryptReference {
    * @return {FireCryptReference} The child reference.
    */
   child(path) {
-    return new FireCryptReference(this._ref.child(path), this._crypto);
+    return new FireCryptReference(this._ref.child(path), this._firecrypt);
   }
 
   /**
@@ -678,17 +680,17 @@ class FireCryptReference {
       );
     }
 
-    const encryptedRef = this._crypto.encryptRef(this._ref);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
     return originalMethod.apply(encryptedRef, [encryptedRef, ...arguments]).then((keys) => {
       if (!keys.some((key) => /\x91/.test(key))) {
         return keys;
       }
-      return keys.map(this._crypto.decrypt.bind(this._crypto));
+      return keys.map(this._firecrypt._crypto.decrypt.bind(this._firecrypt._crypto));
     });
   }
 
   onDisconnect() {
-    const encryptedRef = this._crypto.encryptRef(this._ref);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
     return new FireCryptOnDisconnect(
       encryptedRef, this._ref.onDisconnect.call(encryptedRef), this._crypto);
   }
@@ -738,73 +740,34 @@ class FireCryptReference {
   }
 
   transaction() {
-    const encryptedRef = this._crypto.encryptRef(this._ref);
-    const path = this._crypto.refToPath(this._ref);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    const path = this._firecrypt._crypto.refToPath(this._ref);
 
     const args = Array.prototype.slice.call(arguments);
     const originalCompute = args[0];
     args[0] = originalCompute && ((value) => {
-      value = this._crypto.transformValue(path, value, 'decrypt');
+      value = this._firecrypt._crypto.transformValue(path, value, 'decrypt');
       value = originalCompute(value);
-      value = this._crypto.transformValue(path, value, 'encrypt');
+      value = this._firecrypt._crypto.transformValue(path, value, 'encrypt');
       return value;
     });
     if (args.length > 1) {
       const originalOnComplete = args[1];
       args[1] = originalOnComplete && ((error, committed, snapshot) => {
         return originalOnComplete(
-          error, committed, snapshot && new FireCryptSnapshot(snapshot, this._crypto));
+          error, committed, snapshot && new FireCryptSnapshot(snapshot, this._firecrypt));
       });
     }
     return this._ref.transaction.apply(encryptedRef, args).then((result) => {
-      result.snapshot = result.snapshot && new FireCryptSnapshot(result.snapshot, this._crypto);
+      result.snapshot =
+        result.snapshot && new FireCryptSnapshot(result.snapshot, this._firecrypt);
       return result;
     });
   }
 }
 
-function patchFirebase() {
-  if (typeof require !== 'undefined') {
-    let numApisFound = 0;
-    try {
-      patchFirebaseDatabaseApi(require('firebase-admin'));
-      numApisFound++;
-    } catch (e) {/* ignore */}
-    try {
-      patchFirebaseDatabaseApi(require('firebase'));
-      numApisFound++;
-    } catch (e) {/* ignore */}
-    if (!numApisFound) throw new Error('No Firebase SDK detected.');
-  } else if (typeof firebase !== 'undefined') {  // eslint-disable-line no-negated-condition
-    /* globals firebase */
-    patchFirebaseDatabaseApi(firebase);
-  } else {
-    throw new Error('No Firebase SDK detected.');
-  }
-}
-
-function patchFirebaseDatabaseApi(fb) {
-  // We want to wrap all instances of the Firebase database() with FireCrypt.  These are always
-  // eventually instantiated via an App's database() function, so we'd like to override that.
-  // We issue a bogus initializeApp() call with no config and a unique app name to get at the App's
-  // prototype, and make sure not to instantiate any services on it (as that would fail).
-  const app = fb.initializeApp(undefined, 'firecrypt_init_patch');
-  const originalDatabase = app.constructor.prototype.database;
-  Object.defineProperty(app.constructor.prototype, 'database', {value() {
-    // The database() call caches databases by URL and can return the same instance on separate
-    // calls.  Ensure that there's a 1-to-1 correspondance between database instances and
-    // FireCrypt wrappers by associating a wrapper with its underlying database.
-    const db = originalDatabase.apply(this, arguments);
-    if (!db.firecrypt) {
-      // eslint-disable-next-line no-use-before-define
-      Object.defineProperty(db, 'firecrypt', {value: new FireCrypt(db)});
-    }
-    return db.firecrypt;
-  }});
-}
-
 if (typeof require !== 'undefined') {
-  if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
+  if (typeof LRUCache === 'undefined') global.LRUCache = require('serialized-lru-cache');
   if (typeof CryptoJS === 'undefined') global.CryptoJS = require('crypto-js/core');
   require('crypto-js/enc-base64');
   require('cryptojs-extension/build_node/siv');
@@ -922,7 +885,7 @@ class FireCrypt {
       );
     }
 
-    return new FireCryptReference(this._db.ref(path), this._crypto);
+    return new FireCryptReference(this._db.ref(path), this);
   }
 
   refFromURL(url) {
@@ -934,9 +897,20 @@ class FireCrypt {
       );
     }
 
-    return new FireCryptReference(this._db.refFromURL(url), this._crypto);
+    return new FireCryptReference(this._db.refFromURL(url), this);
   }
 }
 
-exports.patchFirebase = patchFirebase;
+
+function wrapDatabaseWithEncryption(database) {
+  const fc = new FireCrypt(database);
+  if (database.getRules) {
+    fc.getRules = () => database.getRules();
+    fc.getRulesJSON = () => database.getRulesJSON();
+    fc.setRules = source => database.setRules(source);
+  }
+  return fc;
+}
+
+exports.wrapDatabaseWithEncryption = wrapDatabaseWithEncryption;
 //# sourceMappingURL=firecrypt.js.map
