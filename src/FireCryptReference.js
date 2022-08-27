@@ -10,24 +10,24 @@ try {
 }
 
 export default class FireCryptReference {
-  constructor(ref, crypto) {
+  constructor(ref, firecrypt) {
     this._ref = ref;
-    this._crypto = crypto;
+    this._firecrypt = firecrypt;
   }
 
   _interceptQuery(methodName, originalArguments) {
-    const encryptedRef = this._crypto.encryptRef(this._ref);
-    const query = new FireCryptQuery(encryptedRef, {}, this._ref, this._crypto);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    const query = new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
     return query[methodName].apply(query, originalArguments);
   }
 
   _interceptWrite(methodName, originalArguments, argIndex) {
-    const encryptedRef = this._crypto.encryptRef(this._ref);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
 
     const args = Array.prototype.slice.call(originalArguments);
     if (argIndex >= 0 && argIndex < args.length) {
-      const path = this._crypto.refToPath(this._ref);
-      args[argIndex] = this._crypto.transformValue(path, args[argIndex], 'encrypt');
+      const path = this._firecrypt._crypto.refToPath(this._ref);
+      args[argIndex] = this._firecrypt._crypto.transformValue(path, args[argIndex], 'encrypt');
     }
 
     return this._ref[methodName].apply(encryptedRef, args);
@@ -67,7 +67,7 @@ export default class FireCryptReference {
    */
   get ref() {
     if (this._ref.isEqual(this._ref.ref)) return this;
-    return new FireCryptReference(this._ref.ref, this._crypto);
+    return new FireCryptReference(this._ref.ref, this._firecrypt);
   }
 
   /**
@@ -76,7 +76,7 @@ export default class FireCryptReference {
    */
   get root() {
     if (this._ref.isEqual(this._ref.root)) return this;
-    return new FireCryptReference(this._ref.root, this._crypto);
+    return new FireCryptReference(this._ref.root, this._firecrypt);
   }
 
   /**
@@ -86,7 +86,7 @@ export default class FireCryptReference {
    */
   get parent() {
     if (this._ref.parent === null) return null;
-    return new FireCryptReference(this._ref.parent, this._crypto);
+    return new FireCryptReference(this._ref.parent, this._firecrypt);
   }
 
   /**
@@ -94,7 +94,7 @@ export default class FireCryptReference {
    * @return {FireCrypt} The FireCrypt instance associated with this reference.
    */
   get database() {
-    return this._ref.ref.database.firecrypt;
+    return this._firecrypt;
   }
 
   /**
@@ -103,7 +103,7 @@ export default class FireCryptReference {
    * @return {FireCryptReference} The child reference.
    */
   child(path) {
-    return new FireCryptReference(this._ref.child(path), this._crypto);
+    return new FireCryptReference(this._ref.child(path), this._firecrypt);
   }
 
   /**
@@ -171,17 +171,17 @@ export default class FireCryptReference {
       );
     }
 
-    const encryptedRef = this._crypto.encryptRef(this._ref);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
     return originalMethod.apply(encryptedRef, [encryptedRef, ...arguments]).then((keys) => {
       if (!keys.some((key) => /\x91/.test(key))) {
         return keys;
       }
-      return keys.map(this._crypto.decrypt.bind(this._crypto));
+      return keys.map(this._firecrypt._crypto.decrypt.bind(this._firecrypt._crypto));
     });
   }
 
   onDisconnect() {
-    const encryptedRef = this._crypto.encryptRef(this._ref);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
     return new FireCryptOnDisconnect(
       encryptedRef, this._ref.onDisconnect.call(encryptedRef), this._crypto);
   }
@@ -231,26 +231,27 @@ export default class FireCryptReference {
   }
 
   transaction() {
-    const encryptedRef = this._crypto.encryptRef(this._ref);
-    const path = this._crypto.refToPath(this._ref);
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    const path = this._firecrypt._crypto.refToPath(this._ref);
 
     const args = Array.prototype.slice.call(arguments);
     const originalCompute = args[0];
     args[0] = originalCompute && ((value) => {
-      value = this._crypto.transformValue(path, value, 'decrypt');
+      value = this._firecrypt._crypto.transformValue(path, value, 'decrypt');
       value = originalCompute(value);
-      value = this._crypto.transformValue(path, value, 'encrypt');
+      value = this._firecrypt._crypto.transformValue(path, value, 'encrypt');
       return value;
     });
     if (args.length > 1) {
       const originalOnComplete = args[1];
       args[1] = originalOnComplete && ((error, committed, snapshot) => {
         return originalOnComplete(
-          error, committed, snapshot && new FireCryptSnapshot(snapshot, this._crypto));
+          error, committed, snapshot && new FireCryptSnapshot(snapshot, this._firecrypt));
       });
     }
     return this._ref.transaction.apply(encryptedRef, args).then((result) => {
-      result.snapshot = result.snapshot && new FireCryptSnapshot(result.snapshot, this._crypto);
+      result.snapshot =
+        result.snapshot && new FireCryptSnapshot(result.snapshot, this._firecrypt);
       return result;
     });
   }

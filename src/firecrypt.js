@@ -1,43 +1,3 @@
-export function patchFirebase() {
-  if (typeof require !== 'undefined') {
-    let numApisFound = 0;
-    try {
-      patchFirebaseDatabaseApi(require('firebase-admin'));
-      numApisFound++;
-    } catch (e) {/* ignore */}
-    try {
-      patchFirebaseDatabaseApi(require('firebase'));
-      numApisFound++;
-    } catch (e) {/* ignore */}
-    if (!numApisFound) throw new Error('No Firebase SDK detected.');
-  } else if (typeof firebase !== 'undefined') {  // eslint-disable-line no-negated-condition
-    /* globals firebase */
-    patchFirebaseDatabaseApi(firebase);
-  } else {
-    throw new Error('No Firebase SDK detected.');
-  }
-}
-
-function patchFirebaseDatabaseApi(fb) {
-  // We want to wrap all instances of the Firebase database() with FireCrypt.  These are always
-  // eventually instantiated via an App's database() function, so we'd like to override that.
-  // We issue a bogus initializeApp() call with no config and a unique app name to get at the App's
-  // prototype, and make sure not to instantiate any services on it (as that would fail).
-  const app = fb.initializeApp(undefined, 'firecrypt_init_patch');
-  const originalDatabase = app.constructor.prototype.database;
-  Object.defineProperty(app.constructor.prototype, 'database', {value() {
-    // The database() call caches databases by URL and can return the same instance on separate
-    // calls.  Ensure that there's a 1-to-1 correspondance between database instances and
-    // FireCrypt wrappers by associating a wrapper with its underlying database.
-    const db = originalDatabase.apply(this, arguments);
-    if (!db.firecrypt) {
-      // eslint-disable-next-line no-use-before-define
-      Object.defineProperty(db, 'firecrypt', {value: new FireCrypt(db)});
-    }
-    return db.firecrypt;
-  }});
-}
-
 if (typeof require !== 'undefined') {
   if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
   if (typeof CryptoJS === 'undefined') global.CryptoJS = require('crypto-js/core');
@@ -160,7 +120,7 @@ class FireCrypt {
       );
     }
 
-    return new FireCryptReference(this._db.ref(path), this._crypto);
+    return new FireCryptReference(this._db.ref(path), this);
   }
 
   refFromURL(url) {
@@ -172,6 +132,17 @@ class FireCrypt {
       );
     }
 
-    return new FireCryptReference(this._db.refFromURL(url), this._crypto);
+    return new FireCryptReference(this._db.refFromURL(url), this);
   }
+}
+
+
+export function wrapDatabaseWithEncryption(database) {
+  const fc = new FireCrypt(database);
+  if (database.getRules) {
+    fc.getRules = () => database.getRules();
+    fc.getRulesJSON = () => database.getRulesJSON();
+    fc.setRules = source => database.setRules(source);
+  }
+  return fc;
 }
