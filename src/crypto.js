@@ -165,7 +165,7 @@ export default class Crypto {
 
   refToPath(ref, encrypted) {
     const root = ref.root;
-    if (ref === root) return [];
+    if (ref.isEqual(root)) return [];
     const pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
     if (!encrypted && pathStr && pathStr.charAt(0) !== '.' &&
         /[\x00-\x1f\x7f\x91\x92.#$[\]]/.test(pathStr)) {  // eslint-disable-line no-control-regex

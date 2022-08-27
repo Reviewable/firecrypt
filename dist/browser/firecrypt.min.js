@@ -171,7 +171,7 @@ var firecrypt = (function (exports) {
 
   Crypto.prototype.refToPath = function refToPath (ref, encrypted) {
     var root = ref.root;
-    if (ref === root) { return []; }
+    if (ref.isEqual(root)) { return []; }
     var pathStr = decodeURIComponent(ref.toString().slice(root.toString().length));
     if (!encrypted && pathStr && pathStr.charAt(0) !== '.' &&
         /[\x00-\x1f\x7f\x91\x92.#$[\]]/.test(pathStr)) {// eslint-disable-line no-control-regex
@@ -281,11 +281,11 @@ var firecrypt = (function (exports) {
     return regex;
   };
 
-  var FireCryptSnapshot = function FireCryptSnapshot(snap, crypto) {
-    this._ref = crypto.decryptRef(snap.ref);
-    this._path = crypto.refToPath(this._ref);
+  var FireCryptSnapshot = function FireCryptSnapshot(snap, firecrypt) {
+    this._ref = firecrypt._crypto.decryptRef(snap.ref);
+    this._path = firecrypt._crypto.refToPath(this._ref);
     this._snap = snap;
-    this._crypto = crypto;
+    this._firecrypt = firecrypt;
   };
 
   var prototypeAccessors$3 = { key: { configurable: true },ref: { configurable: true } };
@@ -295,22 +295,22 @@ var firecrypt = (function (exports) {
   };
 
   prototypeAccessors$3.ref.get = function () {
-    return new FireCryptReference(this._ref.ref, this._crypto);
+    return new FireCryptReference(this._ref.ref, this._firecrypt);
   };
 
   FireCryptSnapshot.prototype.val = function val () {
-    return this._crypto.transformValue(this._path, this._snap.val(), 'decrypt');
+    return this._firecrypt._crypto.transformValue(this._path, this._snap.val(), 'decrypt');
   };
 
   FireCryptSnapshot.prototype.child = function child (childPath) {
-    return new FireCryptSnapshot(this._snap.child(childPath), this._crypto);
+    return new FireCryptSnapshot(this._snap.child(childPath), this._firecrypt);
   };
 
   FireCryptSnapshot.prototype.forEach = function forEach (action) {
       var this$1$1 = this;
 
     return this._snap.forEach(function (childSnap) {
-      return action(new FireCryptSnapshot(childSnap), this$1$1._crypto);
+      return action(new FireCryptSnapshot(childSnap), this$1$1._firecrypt);
     });
   };
 
@@ -319,8 +319,8 @@ var firecrypt = (function (exports) {
   };
 
   FireCryptSnapshot.prototype.hasChild = function hasChild (childPath) {
-    childPath = this._crypto.encryptPath(
-      childPath.split('/'), this._crypto.specForPath(this._path)).join('/');
+    childPath = this._firecrypt._crypto.encryptPath(
+      childPath.split('/'), this._firecrypt._crypto.specForPath(this._path)).join('/');
     return this._snap.hasChild(childPath);
   };
 
@@ -334,16 +334,16 @@ var firecrypt = (function (exports) {
 
   FireCryptSnapshot.prototype.toJSON = function toJSON () {
     var json = this._snap.toJSON.apply(this._snap, arguments);
-    return this._crypto.transformValue(this._path, json, 'decrypt');
+    return this._firecrypt._crypto.transformValue(this._path, json, 'decrypt');
   };
 
   Object.defineProperties( FireCryptSnapshot.prototype, prototypeAccessors$3 );
 
-  var FireCryptQuery = function FireCryptQuery(query, order, originalRef, crypto) {
+  var FireCryptQuery = function FireCryptQuery(query, order, originalRef, firecrypt) {
     this._query = query;
     this._order = order || {};
     this._originalRef = originalRef || query;
-    this._crypto = crypto;
+    this._firecrypt = firecrypt;
   };
 
   var prototypeAccessors$2 = { ref: { configurable: true } };
@@ -353,14 +353,15 @@ var firecrypt = (function (exports) {
     var self = this;
     var wrappedCallback = function(snap, previousChildKey) {
       return callback.call(// eslint-disable-next-line no-invalid-this
-        this, new FireCryptSnapshot(snap, self._crypto), previousChildKey, self._crypto);
+        this, new FireCryptSnapshot(snap, self._firecrypt), previousChildKey, self._firecrypt);
     };
     wrappedCallback.firecryptCallback = wrappedCallback;
     callback.firecryptCallback = wrappedCallback;
   };
 
   prototypeAccessors$2.ref.get = function () {
-    return new FireCryptReference(this._crypto.decryptRef(this._query.ref), this._crypto);
+    return new FireCryptReference(
+      this._firecrypt._crypto.decryptRef(this._query.ref), this._firecrypt);
   };
 
   FireCryptQuery.prototype.on = function on (eventType, callback, cancelCallback, context) {
@@ -382,7 +383,7 @@ var firecrypt = (function (exports) {
       this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback,
       context
     ).then(function (snap) {
-      return new FireCryptSnapshot(snap, this$1$1._crypto);
+      return new FireCryptSnapshot(snap, this$1$1._firecrypt);
     });
   };
 
@@ -410,15 +411,15 @@ var firecrypt = (function (exports) {
 
   FireCryptQuery.prototype.equalTo = function equalTo (value, key) {
     if (this._order[this._order.by + 'Encrypted']) {
-      value = this._crypto.encrypt(
-        value, this._crypto.getType(value), this._order[this._order.by + 'Encrypted']);
+      value = this._firecrypt._crypto.encrypt(
+        value, this._firecrypt._crypto.getType(value), this._order[this._order.by + 'Encrypted']);
     }
     if (key !== undefined && this._order.keyEncrypted) {
-      key = this._crypto.encrypt(key, 'string', this._order.keyEncrypted);
+      key = this._firecrypt._crypto.encrypt(key, 'string', this._order.keyEncrypted);
     }
     return new FireCryptQuery(
       this._originalRef.equalTo.call(this._query, value, key), this._order, this._originalRef,
-      this._crypto
+      this._firecrypt
     );
   };
 
@@ -433,7 +434,7 @@ var firecrypt = (function (exports) {
   FireCryptQuery.prototype._delegate = function _delegate (methodName, args) {
     return new FireCryptQuery(
       this._originalRef[methodName].apply(this._query, args), this._order, this._originalRef,
-      this._crypto
+      this._firecrypt
     );
   };
 
@@ -445,7 +446,7 @@ var firecrypt = (function (exports) {
   };
 
   FireCryptQuery.prototype._orderBy = function _orderBy (methodName, by, childKey) {
-    var def = this._crypto.specForPath(this._crypto.refToPath(this.ref));
+    var def = this._firecrypt._crypto.specForPath(this._firecrypt._crypto.refToPath(this.ref));
     var order = {by: by};
 
     var encryptedChildKey;
@@ -459,11 +460,12 @@ var firecrypt = (function (exports) {
           if (subDef['.encrypt'].value) { order.valueEncrypted = subDef['.encrypt'].value; }
         }
         if (childKey) {
-          var childDef = this._crypto.specForPath(childPath, subDef);
+          var childDef = this._firecrypt._crypto.specForPath(childPath, subDef);
           if (childDef && childDef['.encrypt'] && childDef['.encrypt'].value) {
             order.childEncrypted = childDef['.encrypt'].value;
           }
-          var encryptedChildKeyCandidate = this._crypto.encryptPath(childPath, subDef).join('/');
+          var encryptedChildKeyCandidate =
+            this._firecrypt._crypto.encryptPath(childPath, subDef).join('/');
           if (encryptedChildKey && encryptedChildKeyCandidate !== encryptedChildKey) {
             throw new Error(
               'Incompatible encryption specifications for orderByChild("' + childKey + '")');
@@ -475,11 +477,11 @@ var firecrypt = (function (exports) {
     if (childKey) {
       return new FireCryptQuery(
         this._originalRef[methodName].call(this._query, encryptedChildKey || childKey), order,
-        this._originalRef, this._crypto
+        this._originalRef, this._firecrypt
       );
     }
     return new FireCryptQuery(
-      this._originalRef[methodName].call(this._query), order, this._originalRef, this._crypto
+      this._originalRef[methodName].call(this._query), order, this._originalRef, this._firecrypt
     );
   };
 
@@ -527,27 +529,27 @@ var firecrypt = (function (exports) {
     // Library is optional, so ignore any errors from failure to load it.
   }
 
-  var FireCryptReference = function FireCryptReference(ref, crypto) {
+  var FireCryptReference = function FireCryptReference(ref, firecrypt) {
     this._ref = ref;
-    this._crypto = crypto;
+    this._firecrypt = firecrypt;
   };
 
   var prototypeAccessors$1 = { key: { configurable: true },path: { configurable: true },ref: { configurable: true },root: { configurable: true },parent: { configurable: true },database: { configurable: true } };
   var staticAccessors = { SERVER_TIMESTAMP: { configurable: true } };
 
   FireCryptReference.prototype._interceptQuery = function _interceptQuery (methodName, originalArguments) {
-    var encryptedRef = this._crypto.encryptRef(this._ref);
-    var query = new FireCryptQuery(encryptedRef, {}, this._ref, this._crypto);
+    var encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    var query = new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
     return query[methodName].apply(query, originalArguments);
   };
 
   FireCryptReference.prototype._interceptWrite = function _interceptWrite (methodName, originalArguments, argIndex) {
-    var encryptedRef = this._crypto.encryptRef(this._ref);
+    var encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
 
     var args = Array.prototype.slice.call(originalArguments);
     if (argIndex >= 0 && argIndex < args.length) {
-      var path = this._crypto.refToPath(this._ref);
-      args[argIndex] = this._crypto.transformValue(path, args[argIndex], 'encrypt');
+      var path = this._firecrypt._crypto.refToPath(this._ref);
+      args[argIndex] = this._firecrypt._crypto.transformValue(path, args[argIndex], 'encrypt');
     }
 
     return this._ref[methodName].apply(encryptedRef, args);
@@ -587,7 +589,7 @@ var firecrypt = (function (exports) {
    */
   prototypeAccessors$1.ref.get = function () {
     if (this._ref.isEqual(this._ref.ref)) { return this; }
-    return new FireCryptReference(this._ref.ref, this._crypto);
+    return new FireCryptReference(this._ref.ref, this._firecrypt);
   };
 
   /**
@@ -596,7 +598,7 @@ var firecrypt = (function (exports) {
    */
   prototypeAccessors$1.root.get = function () {
     if (this._ref.isEqual(this._ref.root)) { return this; }
-    return new FireCryptReference(this._ref.root, this._crypto);
+    return new FireCryptReference(this._ref.root, this._firecrypt);
   };
 
   /**
@@ -606,7 +608,7 @@ var firecrypt = (function (exports) {
    */
   prototypeAccessors$1.parent.get = function () {
     if (this._ref.parent === null) { return null; }
-    return new FireCryptReference(this._ref.parent, this._crypto);
+    return new FireCryptReference(this._ref.parent, this._firecrypt);
   };
 
   /**
@@ -614,7 +616,7 @@ var firecrypt = (function (exports) {
    * @return {FireCrypt} The FireCrypt instance associated with this reference.
    */
   prototypeAccessors$1.database.get = function () {
-    return this._ref.ref.database.firecrypt;
+    return this._firecrypt;
   };
 
   /**
@@ -623,7 +625,7 @@ var firecrypt = (function (exports) {
    * @return {FireCryptReference} The child reference.
    */
   FireCryptReference.prototype.child = function child (path) {
-    return new FireCryptReference(this._ref.child(path), this._crypto);
+    return new FireCryptReference(this._ref.child(path), this._firecrypt);
   };
 
   /**
@@ -694,17 +696,17 @@ var firecrypt = (function (exports) {
       );
     }
 
-    var encryptedRef = this._crypto.encryptRef(this._ref);
+    var encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
     return originalMethod.apply(encryptedRef, [encryptedRef ].concat( argsArray)).then(function (keys) {
       if (!keys.some(function (key) { return /\x91/.test(key); })) {
         return keys;
       }
-      return keys.map(this$1$1._crypto.decrypt.bind(this$1$1._crypto));
+      return keys.map(this$1$1._firecrypt._crypto.decrypt.bind(this$1$1._firecrypt._crypto));
     });
   };
 
   FireCryptReference.prototype.onDisconnect = function onDisconnect () {
-    var encryptedRef = this._crypto.encryptRef(this._ref);
+    var encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
     return new FireCryptOnDisconnect(
       encryptedRef, this._ref.onDisconnect.call(encryptedRef), this._crypto);
   };
@@ -756,26 +758,27 @@ var firecrypt = (function (exports) {
   FireCryptReference.prototype.transaction = function transaction () {
       var this$1$1 = this;
 
-    var encryptedRef = this._crypto.encryptRef(this._ref);
-    var path = this._crypto.refToPath(this._ref);
+    var encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    var path = this._firecrypt._crypto.refToPath(this._ref);
 
     var args = Array.prototype.slice.call(arguments);
     var originalCompute = args[0];
     args[0] = originalCompute && (function (value) {
-      value = this$1$1._crypto.transformValue(path, value, 'decrypt');
+      value = this$1$1._firecrypt._crypto.transformValue(path, value, 'decrypt');
       value = originalCompute(value);
-      value = this$1$1._crypto.transformValue(path, value, 'encrypt');
+      value = this$1$1._firecrypt._crypto.transformValue(path, value, 'encrypt');
       return value;
     });
     if (args.length > 1) {
       var originalOnComplete = args[1];
       args[1] = originalOnComplete && (function (error, committed, snapshot) {
         return originalOnComplete(
-          error, committed, snapshot && new FireCryptSnapshot(snapshot, this$1$1._crypto));
+          error, committed, snapshot && new FireCryptSnapshot(snapshot, this$1$1._firecrypt));
       });
     }
     return this._ref.transaction.apply(encryptedRef, args).then(function (result) {
-      result.snapshot = result.snapshot && new FireCryptSnapshot(result.snapshot, this$1$1._crypto);
+      result.snapshot =
+        result.snapshot && new FireCryptSnapshot(result.snapshot, this$1$1._firecrypt);
       return result;
     });
   };
@@ -783,48 +786,8 @@ var firecrypt = (function (exports) {
   Object.defineProperties( FireCryptReference.prototype, prototypeAccessors$1 );
   Object.defineProperties( FireCryptReference, staticAccessors );
 
-  function patchFirebase() {
-    if (typeof require !== 'undefined') {
-      var numApisFound = 0;
-      try {
-        patchFirebaseDatabaseApi(require('firebase-admin'));
-        numApisFound++;
-      } catch (e) {/* ignore */}
-      try {
-        patchFirebaseDatabaseApi(require('firebase'));
-        numApisFound++;
-      } catch (e$1) {/* ignore */}
-      if (!numApisFound) { throw new Error('No Firebase SDK detected.'); }
-    } else if (typeof firebase !== 'undefined') {  // eslint-disable-line no-negated-condition
-      /* globals firebase */
-      patchFirebaseDatabaseApi(firebase);
-    } else {
-      throw new Error('No Firebase SDK detected.');
-    }
-  }
-
-  function patchFirebaseDatabaseApi(fb) {
-    // We want to wrap all instances of the Firebase database() with FireCrypt.  These are always
-    // eventually instantiated via an App's database() function, so we'd like to override that.
-    // We issue a bogus initializeApp() call with no config and a unique app name to get at the App's
-    // prototype, and make sure not to instantiate any services on it (as that would fail).
-    var app = fb.initializeApp(undefined, 'firecrypt_init_patch');
-    var originalDatabase = app.constructor.prototype.database;
-    Object.defineProperty(app.constructor.prototype, 'database', {value: function value() {
-      // The database() call caches databases by URL and can return the same instance on separate
-      // calls.  Ensure that there's a 1-to-1 correspondance between database instances and
-      // FireCrypt wrappers by associating a wrapper with its underlying database.
-      var db = originalDatabase.apply(this, arguments);
-      if (!db.firecrypt) {
-        // eslint-disable-next-line no-use-before-define
-        Object.defineProperty(db, 'firecrypt', {value: new FireCrypt(db)});
-      }
-      return db.firecrypt;
-    }});
-  }
-
   if (typeof require !== 'undefined') {
-    if (typeof LRUCache === 'undefined') { global.LRUCache = require('lru-cache'); }
+    if (typeof LRUCache === 'undefined') { global.LRUCache = require('serialized-lru-cache'); }
     if (typeof CryptoJS === 'undefined') { global.CryptoJS = require('crypto-js/core'); }
     require('crypto-js/enc-base64');
     require('cryptojs-extension/build_node/siv');
@@ -946,7 +909,7 @@ var firecrypt = (function (exports) {
       );
     }
 
-    return new FireCryptReference(this._db.ref(path), this._crypto);
+    return new FireCryptReference(this._db.ref(path), this);
   };
 
   FireCrypt.prototype.refFromURL = function refFromURL (url) {
@@ -958,12 +921,23 @@ var firecrypt = (function (exports) {
       );
     }
 
-    return new FireCryptReference(this._db.refFromURL(url), this._crypto);
+    return new FireCryptReference(this._db.refFromURL(url), this);
   };
 
   Object.defineProperties( FireCrypt.prototype, prototypeAccessors );
 
-  exports.patchFirebase = patchFirebase;
+
+  function wrapDatabaseWithEncryption(database) {
+    var fc = new FireCrypt(database);
+    if (database.getRules) {
+      fc.getRules = function () { return database.getRules(); };
+      fc.getRulesJSON = function () { return database.getRulesJSON(); };
+      fc.setRules = function (source) { return database.setRules(source); };
+    }
+    return fc;
+  }
+
+  exports.wrapDatabaseWithEncryption = wrapDatabaseWithEncryption;
 
   Object.defineProperty(exports, '__esModule', { value: true });
 

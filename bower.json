@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "2.1.2",
+  "version": "3.0.0",
   "homepage": "https://github.com/pkaminski/firecrypt",
   "authors": [
     "Piotr Kaminski <piotr@ideanest.com>"
@@ -20,7 +20,7 @@
     "tests"
   ],
   "dependencies": {
-    "firebase": "5.x || 6.x || 7.x",
+    "firebase": "9.x",
     "serialized-lru-cache": "^3.1.0",
     "crypto-js": "^4.0.0",
     "cryptojs-extension": "reviewable/cryptojs-extension#master"
