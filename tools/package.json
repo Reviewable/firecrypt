@@ -33,7 +33,7 @@
     "command-line-usage": "^6.1.0",
     "crypto-js": "^4.0.0",
     "cryptojs-extension": "github:pkaminski/cryptojs-extension",
-    "firebase-admin": "^9.3.0",
+    "firebase-admin": "^11.4.1",
     "lodash": "^4.17.20",
     "lru-cache": "^6.0.0",
     "ms": "^2.1.2",
