@@ -117,10 +117,12 @@ export default class FireCryptReference {
   /**
    * Returns whether or not this FireCryptReference is equivalent to the provided
    * FireCryptReference.
-   * @return {FireCryptReference} Another FireCryptReference instance against which to compare.
+   * @param {FireCryptReference} otherRef Another FireCryptReference instance against which to
+   *  compare.
+   * @return {boolean} Whether the two references are equivalent.
    */
   isEqual(otherRef) {
-    return this._ref.isEqual(otherRef._ref);
+    return this._ref.isEqual(otherRef && otherRef._ref);
   }
 
   /**
