@@ -364,6 +364,32 @@ var firecrypt = (function (exports) {
       this._firecrypt._crypto.decryptRef(this._query.ref), this._firecrypt);
   };
 
+  /**
+   * Returns a JSON-serializable representation of this object.
+   * @return {Object} A JSON-serializable representation of this object.
+   */
+  FireCryptQuery.prototype.toJSON = function toJSON () {
+    return this._query.toJSON();
+  };
+
+  /**
+   * Returns whether or not this FireCryptQuery is equivalent to the provided
+   * FireCryptQuery.
+   * @param {FireCryptQuery} otherQuery Another FireCryptQuery instance against which to compare.
+   * @return {boolean} Whether the two queries are equivalent.
+   */
+  FireCryptQuery.prototype.isEqual = function isEqual (otherQuery) {
+    return this._query.isEqual(otherQuery && otherQuery._query);
+  };
+
+  /**
+   * Stringifies the wrapped query.
+   * @return {string} The Firebase URL wrapped by this FireCryptQuery object.
+   */
+  FireCryptQuery.prototype.toString = function toString () {
+    return decodeURIComponent(this._query.toString());
+  };
+
   FireCryptQuery.prototype.on = function on (eventType, callback, cancelCallback, context) {
     this._wrapQueryCallback(callback);
     return this._originalRef.on.call(
@@ -639,10 +665,12 @@ var firecrypt = (function (exports) {
   /**
    * Returns whether or not this FireCryptReference is equivalent to the provided
    * FireCryptReference.
-   * @return {FireCryptReference} Another FireCryptReference instance against which to compare.
+   * @param {FireCryptReference} otherRef Another FireCryptReference instance against which to
+   *compare.
+   * @return {boolean} Whether the two references are equivalent.
    */
   FireCryptReference.prototype.isEqual = function isEqual (otherRef) {
-    return this._ref.isEqual(otherRef._ref);
+    return this._ref.isEqual(otherRef && otherRef._ref);
   };
 
   /**
@@ -787,7 +815,7 @@ var firecrypt = (function (exports) {
   Object.defineProperties( FireCryptReference, staticAccessors );
 
   if (typeof require !== 'undefined') {
-    if (typeof LRUCache === 'undefined') { global.LRUCache = require('serialized-lru-cache'); }
+    if (typeof LRUCache === 'undefined') { global.LRUCache = require('lru-cache'); }
     if (typeof CryptoJS === 'undefined') { global.CryptoJS = require('crypto-js/core'); }
     require('crypto-js/enc-base64');
     require('cryptojs-extension/build_node/siv');

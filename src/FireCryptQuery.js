@@ -25,6 +25,32 @@ export default class FireCryptQuery {
       this._firecrypt._crypto.decryptRef(this._query.ref), this._firecrypt);
   }
 
+  /**
+   * Returns a JSON-serializable representation of this object.
+   * @return {Object} A JSON-serializable representation of this object.
+   */
+  toJSON() {
+    return this._query.toJSON();
+  }
+
+  /**
+   * Returns whether or not this FireCryptQuery is equivalent to the provided
+   * FireCryptQuery.
+   * @param {FireCryptQuery} otherQuery Another FireCryptQuery instance against which to compare.
+   * @return {boolean} Whether the two queries are equivalent.
+   */
+  isEqual(otherQuery) {
+    return this._query.isEqual(otherQuery && otherQuery._query);
+  }
+
+  /**
+   * Stringifies the wrapped query.
+   * @return {string} The Firebase URL wrapped by this FireCryptQuery object.
+   */
+  toString() {
+    return decodeURIComponent(this._query.toString());
+  }
+
   on(eventType, callback, cancelCallback, context) {
     this._wrapQueryCallback(callback);
     return this._originalRef.on.call(
