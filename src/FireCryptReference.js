@@ -122,7 +122,7 @@ export default class FireCryptReference {
    * @return {boolean} Whether the two references are equivalent.
    */
   isEqual(otherRef) {
-    return this._ref.isEqual(otherRef && otherRef._ref);
+    return this._ref.isEqual(otherRef && (otherRef._ref || otherRef._query));
   }
 
   /**
