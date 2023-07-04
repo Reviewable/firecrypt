@@ -379,7 +379,7 @@ var firecrypt = (function (exports) {
    * @return {boolean} Whether the two queries are equivalent.
    */
   FireCryptQuery.prototype.isEqual = function isEqual (otherQuery) {
-    return this._query.isEqual(otherQuery && otherQuery._query);
+    return this._query.isEqual(otherQuery && (otherQuery._query || otherQuery._ref));
   };
 
   /**
@@ -670,7 +670,7 @@ var firecrypt = (function (exports) {
    * @return {boolean} Whether the two references are equivalent.
    */
   FireCryptReference.prototype.isEqual = function isEqual (otherRef) {
-    return this._ref.isEqual(otherRef && otherRef._ref);
+    return this._ref.isEqual(otherRef && (otherRef._ref || otherRef._query));
   };
 
   /**

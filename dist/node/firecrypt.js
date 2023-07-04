@@ -369,7 +369,7 @@ class FireCryptQuery {
    * @return {boolean} Whether the two queries are equivalent.
    */
   isEqual(otherQuery) {
-    return this._query.isEqual(otherQuery && otherQuery._query);
+    return this._query.isEqual(otherQuery && (otherQuery._query || otherQuery._ref));
   }
 
   /**
@@ -657,7 +657,7 @@ class FireCryptReference {
    * @return {boolean} Whether the two references are equivalent.
    */
   isEqual(otherRef) {
-    return this._ref.isEqual(otherRef && otherRef._ref);
+    return this._ref.isEqual(otherRef && (otherRef._ref || otherRef._query));
   }
 
   /**
