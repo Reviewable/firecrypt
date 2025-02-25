@@ -116,9 +116,14 @@ var firecrypt = (function (exports) {
         ("Transform type must be either \"encrypt\" or \"decrypt\", but got \"" + transformType + "\".")
       );
     }
-    var transform =
-      transformType === 'encrypt' ? this.encrypt.bind(this) : this.decrypt.bind(this);
-    return this.transformTree(value, this.specForPath(path), transform);
+    try {
+      var transform =
+        transformType === 'encrypt' ? this.encrypt.bind(this) : this.decrypt.bind(this);
+      return this.transformTree(value, this.specForPath(path), transform);
+    } catch (e) {
+      if (e.firecrypt) { e.firecryptPath = path; }
+      throw e;
+    }
   };
 
   Crypto.prototype.transformTree = function transformTree (value, def, transform) {

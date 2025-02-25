@@ -110,9 +110,14 @@ export default class Crypto {
         `Transform type must be either "encrypt" or "decrypt", but got "${transformType}".`
       );
     }
-    const transform =
-      transformType === 'encrypt' ? this.encrypt.bind(this) : this.decrypt.bind(this);
-    return this.transformTree(value, this.specForPath(path), transform);
+    try {
+      const transform =
+        transformType === 'encrypt' ? this.encrypt.bind(this) : this.decrypt.bind(this);
+      return this.transformTree(value, this.specForPath(path), transform);
+    } catch (e) {
+      if (e.firecrypt) e.firecryptPath = path;
+      throw e;
+    }
   }
 
   transformTree(value, def, transform) {
