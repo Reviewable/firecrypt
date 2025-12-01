@@ -117,22 +117,20 @@ var firecrypt = (function (exports) {
       );
     }
     try {
-      var transform =
-        transformType === 'encrypt' ? this.encrypt.bind(this) : this.decrypt.bind(this);
-      return this.transformTree(value, this.specForPath(path), transform);
+      return this.transformTree(value, this.specForPath(path), transformType);
     } catch (e) {
       if (e.firecrypt) { e.firecryptPath = path; }
       throw e;
     }
   };
 
-  Crypto.prototype.transformTree = function transformTree (value, def, transform) {
+  Crypto.prototype.transformTree = function transformTree (value, def, transformType) {
     if (!def) { return value; }
     var type = this.getType(value);
     var i;
     if (/^(string|number|boolean)$/.test(type)) {
       if (def['.encrypt'] && def['.encrypt'].value) {
-        value = transform(value, type, def['.encrypt'].value);
+        value = this[transformType](value, type, def['.encrypt'].value);
       }
     } else if (type === 'object' && value !== null) {
       var transformedValue = {};
@@ -144,32 +142,34 @@ var firecrypt = (function (exports) {
           var keyParts = key.split('/');
           subDef = def;
           for (i = 0; i < keyParts.length; i++) {
-            if (transform === this.decrypt) {
+            if (transformType === 'decrypt') {
               keyParts[i] = this.decrypt(keyParts[i]);
               subDef = subDef && (subDef[keyParts[i]] || subDef.$);
             } else {
               subDef = subDef && (subDef[keyParts[i]] || subDef.$);
               if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
-                keyParts[i] = transform(keyParts[i], 'string', subDef['.encrypt'].key);
+                keyParts[i] = this[transformType](keyParts[i], 'string', subDef['.encrypt'].key);
               }
             }
           }
           key = keyParts.join('/');
-        } else if (transform === this.decrypt) {
+        } else if (transformType === 'decrypt') {
           key = this.decrypt(key);
           subDef = def[key] || def.$;
         } else {
           subDef = def[key] || def.$;
           if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
-            key = transform(key, 'string', subDef['.encrypt'].key);
+            key = this[transformType](key, 'string', subDef['.encrypt'].key);
           }
         }
-        transformedValue[key] = this.transformTree(subValue, subDef, transform);
+        transformedValue[key] = this.transformTree(subValue, subDef, transformType);
       }
       value = transformedValue;
     } else if (type === 'array') {
       if (!def.$) { return value; }
-      for (i = 0; i < value.length; i++) { value[i] = this.transformTree(value[i], def.$, transform); }
+      for (i = 0; i < value.length; i++) {
+        value[i] = this.transformTree(value[i], def.$, transformType);
+      }
     }
     return value;
   };
