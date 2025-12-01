@@ -115,14 +115,15 @@ class Crypto {
       );
     }
     try {
-      return this.transformTree(value, this.specForPath(path), transformType);
+      return this._transformTree(value, this.specForPath(path), transformType);
     } catch (e) {
       if (e.firecrypt) e.firecryptPath = path;
       throw e;
     }
   }
 
-  transformTree(value, def, transformType) {
+  _transformTree(value, def, transformType) {
+    // transformType is either 'encrypt' or 'decrypt'.
     if (!def) return value;
     const type = this.getType(value);
     let i;
@@ -160,13 +161,13 @@ class Crypto {
             key = this[transformType](key, 'string', subDef['.encrypt'].key);
           }
         }
-        transformedValue[key] = this.transformTree(subValue, subDef, transformType);
+        transformedValue[key] = this._transformTree(subValue, subDef, transformType);
       }
       value = transformedValue;
     } else if (type === 'array') {
       if (!def.$) return value;
       for (i = 0; i < value.length; i++) {
-        value[i] = this.transformTree(value[i], def.$, transformType);
+        value[i] = this._transformTree(value[i], def.$, transformType);
       }
     }
     return value;
