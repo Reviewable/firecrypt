@@ -1,17 +1,17 @@
 if (typeof require !== 'undefined') {
+  /* eslint-disable no-undef */
+  if (typeof fflate === 'undefined') global.fflate = require('fflate');
   if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
   if (typeof CryptoJS === 'undefined') global.CryptoJS = require('crypto-js/core');
+  require('crypto-js/lib-typedarrays');
   require('crypto-js/enc-base64');
+  require('crypto-js/enc-base64url');
   require('cryptojs-extension/build_node/siv');
+  /* eslint-enable no-undef */
 }
 
-CryptoJS.enc.Base64UrlSafe = {
-  stringify: CryptoJS.enc.Base64.stringify,
-  parse: CryptoJS.enc.Base64.parse,
-  _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_',
-};
-
 import Crypto from './crypto';
+import FireCryptError from './FireCryptError';
 import FireCryptReference from './FireCryptReference';
 
 class FireCrypt {
@@ -30,44 +30,38 @@ class FireCrypt {
 
   _ensureEncryptionConfigured() {
     if (typeof this._crypto === 'undefined') {
-      throw new Error('Encryption for this FireCrypt reference has not been configured yet.');
+      throw new FireCryptError(
+        'Encryption for this FireCrypt reference has not been configured yet.', 'BAD_CONFIG');
     }
   }
 
   _setupAesSiv(key, checkValue) {
     const siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
-    const encryptString = (str) => {
-      return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
+    const encryptString = strOrU8 => {
+      const str = typeof strOrU8 === 'string' ? strOrU8 : CryptoJS.lib.WordArray.create(strOrU8);
+      return CryptoJS.enc.Base64url.stringify(siv.encrypt(str));
     };
-    const decryptString = (str) => {
-      const result = siv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str));
-      if (result === false) {
-        const e = new Error('Wrong decryption key');
-        e.firecrypt = 'WRONG_KEY';
-        throw e;
-      }
-      return CryptoJS.enc.Utf8.stringify(result);
+    const decryptString = (str, decode) => {
+      const result = siv.decrypt(CryptoJS.enc.Base64url.parse(str));
+      if (result === false) throw new FireCryptError('Wrong decryption key', 'WRONG_KEY');
+      return decode ? CryptoJS.enc.Utf8.stringify(result) : result;
     };
 
     this._crypto.setStringEncryptionFunctions(encryptString, decryptString);
 
-    if (checkValue) decryptString(checkValue);
-    return encryptString(CryptoJS.enc.Base64UrlSafe.stringify(CryptoJS.lib.WordArray.random(10)));
+    if (checkValue) decryptString(checkValue, true);
+    return encryptString(CryptoJS.enc.Base64url.stringify(CryptoJS.lib.WordArray.random(10)));
   }
 
-  get app() {
-    return this._db.app;
-  }
-
-  configureEncryption(options = {}, specification = {}) {
+  configureFireCrypt(options = {}, specification = {}) {
     if (typeof options !== 'object' || options === null) {
       throw new Error(
-        `Expected second argument passed to configureEncryption() to be an object, but got ` +
+        `Expected second argument passed to configureFireCrypt() to be an object, but got ` +
         `"${options}".`
       );
     } else if (typeof specification !== 'object' || specification === null) {
       throw new Error(
-        `Expected third argument passed to configureEncryption() to be an object, but got ` +
+        `Expected third argument passed to configureFireCrypt() to be an object, but got ` +
         `"${specification}".`
       );
     }
@@ -80,18 +74,26 @@ class FireCrypt {
 
     let result;
 
-    switch (options.algorithm) {
+    switch (options.encryption) {
       case 'aes-siv':
-        if (!options.key) throw new Error('You must specify a key to use AES encryption.');
+        if (!options.key) {
+          throw new FireCryptError('You must specify a key to use AES encryption.', 'BAD_CONFIG');
+        }
         result = this._setupAesSiv(options.key, options.keyCheckValue);
         break;
-      case 'passthrough':
-        this._crypto.setStringEncryptionFunctions((str) => str, (str) => str);
-        break;
       case 'none':
+        // Don't set any string encryption functions.
         break;
+      case 'notready': {
+        function throwNotSetUpError() {
+          throw new FireCryptError('Encryption not set up', 'NO_KEY');
+        }
+        this._crypto.setStringEncryptionFunctions(throwNotSetUpError, throwNotSetUpError);
+        break;
+      }
       default:
-        throw new Error('Unknown encryption algorithm "' + options.algorithm + '".');
+        throw new FireCryptError(
+          `Unknown encryption algorithm "${options.encryption}".`, 'BAD_CONFIG');
     }
 
     // Make the encryption key check value available off of this FireCrypt instance and therefore
@@ -99,6 +101,11 @@ class FireCrypt {
     this.encryptionKeyCheckValue = result;
 
     return result;
+  }
+
+  get fireCryptStats() {
+    this._ensureEncryptionConfigured();
+    return this._crypto.stats;
   }
 
   goOnline() {
@@ -109,6 +116,10 @@ class FireCrypt {
   goOffline() {
     this._ensureEncryptionConfigured();
     return this._db.goOffline();
+  }
+
+  get app() {
+    return this._db.app;
   }
 
   ref(path) {
@@ -137,7 +148,7 @@ class FireCrypt {
 }
 
 
-export function wrapDatabaseWithEncryption(database) {
+export function wrapDatabase(database) {
   const fc = new FireCrypt(database);
   if (database.getRules) {
     fc.getRules = () => database.getRules();
