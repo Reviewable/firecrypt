@@ -3,16 +3,13 @@
 const _ = require('lodash');
 const NodeFire = require('nodefire').default;
 const LRUCache = require('lru-cache');
+const fflate = require('fflate');
 
 const CryptoJS = require('crypto-js/core');
+require('crypto-js/lib-typedarrays');
 require('crypto-js/enc-base64');
+require('crypto-js/enc-base64url');
 require('cryptojs-extension/build_node/siv');
-
-CryptoJS.enc.Base64UrlSafe = {
-  stringify: CryptoJS.enc.Base64.stringify,
-  parse: CryptoJS.enc.Base64.parse,
-  _map: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
-};
 
 const ALREADY_RECRYPTED = {};
 const CACHE_SIZE = 10 * 1000 * 1000;
@@ -176,20 +173,31 @@ function decrypt(value) {
       result = ALREADY_RECRYPTED;
     } else {
       switch (match[1]) {
-        case 'S':
-          result = decryptedString;
+        case 'C':
+          result = fflate.strFromU8(fflate.decompressSync(Buffer.from(match[2], 'base64url')));
           break;
-        case 'N':
+        case 'E':
+          result =
+            fflate.strFromU8(fflate.decompressSync(wordsToU8(decryptOldString(match[2], false))));
+          break;
+        case 'S':
+          result = decryptOldString(match[2], true);
+          break;
+        case 'N': {
+          const decryptedString = decryptOldString(match[2], true);
           result = Number(decryptedString);
           // Check for NaN, since it's the only value where x !== x.
           // eslint-disable-next-line no-self-compare
           if (result !== result) throw new Error('Invalid encrypted number: ' + decryptedString);
           break;
-        case 'B':
+        }
+        case 'B': {
+          const decryptedString = decryptOldString(match[2], true);
           if (decryptedString === 't') result = true;
           else if (decryptedString === 'f') result = false;
           else throw new Error('Invalid encrypted boolean: ' + decryptedString);
           break;
+        }
         default:
           throw new Error('Invalid encrypted value type code: ' + match[1]);
       }
@@ -224,6 +232,7 @@ function encrypt(value, pattern, old) {
     return cache.get(cacheKey);
   }
   cache.stats.misses += 1;
+  // TODO: compress while re-encrypting, if requested by user.
   let result;
   if (pattern === '#') {
     result = encryptValue(value, type, siv);
@@ -247,16 +256,16 @@ function encrypt(value, pattern, old) {
   return result;
 }
 
-function decryptOldString(str) {
-  let result = oldSiv ? oldSiv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)) : false;
+function decryptOldString(str, decode) {
+  let result = oldSiv ? oldSiv.decrypt(CryptoJS.enc.Base64url.parse(str)) : false;
   if (result === false) {
-    result = newSiv ? newSiv.decrypt(CryptoJS.enc.Base64UrlSafe.parse(str)) : false;
+    result = newSiv ? newSiv.decrypt(CryptoJS.enc.Base64url.parse(str)) : false;
     if (result !== false) return ALREADY_RECRYPTED;
     const e = new Error('Wrong decryption key');
     e.firecrypt = 'WRONG_KEY';
     throw e;
   }
-  return CryptoJS.enc.Utf8.stringify(result);
+  return decode ? CryptoJS.enc.Utf8.stringify(result) : result;
 }
 
 function encryptValue(value, type, siv) {
@@ -268,7 +277,7 @@ function encryptValue(value, type, siv) {
 }
 
 function encryptString(str, siv) {
-  return CryptoJS.enc.Base64UrlSafe.stringify(siv.encrypt(str));
+  return CryptoJS.enc.Base64url.stringify(siv.encrypt(str));
 }
 
 function getType(value) {
@@ -306,3 +315,16 @@ function defForPath(path) {
 function computeCacheItemSize(value, key) {
   return key.length + (_.isString(value) ? value.length : 4);
 }
+
+function wordsToU8(wordArray) {
+  wordArray.clamp();
+  const sigBytes = wordArray.sigBytes;
+  const words = wordArray.words;
+  const uint8Array = new Uint8Array(sigBytes);
+  for (let i = 0; i < sigBytes; i++) {
+    // eslint-disable-next-line no-bitwise
+    uint8Array[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+  }
+  return uint8Array;
+};
+

@@ -3,10 +3,12 @@ import FireCryptSnapshot from './FireCryptSnapshot';
 import FireCryptOnDisconnect from './FireCryptOnDisconnect';
 
 let childrenKeysFromLib;
-try {
-  childrenKeysFromLib = require('firebase-childrenkeys');
-} catch (e) {
-  // Library is optional, so ignore any errors from failure to load it.
+if (typeof require !== 'undefined') {
+  try {
+    childrenKeysFromLib = require('firebase-childrenkeys');  // eslint-disable-line no-undef
+  } catch {
+    // Library is optional, so ignore any errors from failure to load it.
+  }
 }
 
 export default class FireCryptReference {
@@ -174,8 +176,8 @@ export default class FireCryptReference {
     }
 
     const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
-    return originalMethod.apply(encryptedRef, [encryptedRef, ...arguments]).then((keys) => {
-      if (!keys.some((key) => /\x91/.test(key))) {
+    return originalMethod.apply(encryptedRef, [encryptedRef, ...arguments]).then(keys => {
+      if (!keys.some(key => /\x91/.test(key))) {
         return keys;
       }
       return keys.map(this._firecrypt._crypto.decrypt.bind(this._firecrypt._crypto));
@@ -238,7 +240,7 @@ export default class FireCryptReference {
 
     const args = Array.prototype.slice.call(arguments);
     const originalCompute = args[0];
-    args[0] = originalCompute && ((value) => {
+    args[0] = originalCompute && (value => {
       value = this._firecrypt._crypto.transformValue(path, value, 'decrypt');
       value = originalCompute(value);
       value = this._firecrypt._crypto.transformValue(path, value, 'encrypt');
@@ -251,7 +253,7 @@ export default class FireCryptReference {
           error, committed, snapshot && new FireCryptSnapshot(snapshot, this._firecrypt));
       });
     }
-    return this._ref.transaction.apply(encryptedRef, args).then((result) => {
+    return this._ref.transaction.apply(encryptedRef, args).then(result => {
       result.snapshot =
         result.snapshot && new FireCryptSnapshot(result.snapshot, this._firecrypt);
       return result;
