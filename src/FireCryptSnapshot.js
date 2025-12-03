@@ -25,7 +25,7 @@ export default class FireCryptSnapshot {
   }
 
   forEach(action) {
-    return this._snap.forEach((childSnap) => {
+    return this._snap.forEach(childSnap => {
       return action(new FireCryptSnapshot(childSnap), this._firecrypt);
     });
   }

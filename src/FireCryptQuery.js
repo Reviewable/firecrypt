@@ -67,7 +67,7 @@ export default class FireCryptQuery {
     return this._originalRef.once.call(
       this._query, eventType, successCallback && successCallback.firecryptCallback, failureCallback,
       context
-    ).then((snap) => {
+    ).then(snap => {
       return new FireCryptSnapshot(snap, this._firecrypt);
     });
   }
