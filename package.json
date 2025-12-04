@@ -1,12 +1,14 @@
 {
   "name": "firecrypt",
-  "version": "3.3.1",
+  "version": "4.0.0",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
   "browser": "dist/browser/firecrypt.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint",
     "build": "rollup -c rollup.config.js",
+    "prepublish": "yarn build",
     "update": "yarn upgrade-interactive --latest"
   },
   "repository": {
@@ -24,11 +26,12 @@
   },
   "homepage": "https://github.com/pkaminski/firecrypt",
   "engines": {
-    "node": ">=8.x"
+    "node": ">=20.x"
   },
   "dependencies": {
     "crypto-js": "^4.0.0",
     "cryptojs-extension": "github:reviewable/cryptojs-extension",
+    "fflate": "^0.8.2",
     "serialized-lru-cache": "^3.1.0"
   },
   "peerDependencies": {
@@ -39,10 +42,9 @@
     "firebase-childrenkeys": "2.x || 3.x"
   },
   "devDependencies": {
-    "@rollup/plugin-buble": "^0.21.3",
-    "babel-core": "^6.26.3",
-    "eslint": "^8.21.0",
-    "rollup": "^2.26.4",
+    "eslint": "^9.39.1",
+    "reviewable-configs": "Reviewable/reviewable-configs#master",
+    "rollup": "^4.53.3",
     "rollup-plugin-minify-es": "^1.1.1"
   }
 }
