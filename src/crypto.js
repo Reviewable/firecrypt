@@ -159,12 +159,12 @@ export default class Crypto {
 
   _transformTree(value, def, transformType) {
     // transformType is either 'encrypt' or 'decrypt'.
-    if (!def) return value;
+    if (!def && transformType === 'encrypt') return value;
     const type = this.getType(value);
     let i;
     if (/^(string|number|boolean)$/.test(type)) {
-      if (def['.encrypt'] && def['.encrypt'].value) {
-        value = this[transformType](value, type, def['.encrypt'].value, true);
+      if (transformType === 'decrypt' || def['.encrypt'] && def['.encrypt'].value) {
+        value = this[transformType](value, type, def && def['.encrypt'].value, true);
       }
     } else if (type === 'object' && value !== null) {
       const transformedValue = {};
@@ -176,23 +176,18 @@ export default class Crypto {
           const keyParts = key.split('/');
           subDef = def;
           for (i = 0; i < keyParts.length; i++) {
-            if (transformType === 'decrypt') {
-              keyParts[i] = this.decrypt(keyParts[i]);
-              subDef = subDef && (subDef[keyParts[i]] || subDef.$);
-            } else {
-              subDef = subDef && (subDef[keyParts[i]] || subDef.$);
-              if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
-                keyParts[i] =
-                  this[transformType](keyParts[i], 'string', subDef['.encrypt'].key, false);
-              }
+            subDef = subDef && (subDef[keyParts[i]] || subDef.$);
+            if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
+              keyParts[i] =
+                this[transformType](keyParts[i], 'string', subDef['.encrypt'].key, false);
             }
           }
           key = keyParts.join('/');
         } else if (transformType === 'decrypt') {
           key = this.decrypt(key);
-          subDef = def[key] || def.$;
+          subDef = def ? def[key] || def.$ : def;
         } else {
-          subDef = def[key] || def.$;
+          subDef = def ? def[key] || def.$ : def;
           if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
             key = this[transformType](key, 'string', subDef['.encrypt'].key, false);
           }
@@ -201,9 +196,9 @@ export default class Crypto {
       }
       value = transformedValue;
     } else if (type === 'array') {
-      if (!def.$) return value;
+      if (transformType === 'encrypt' && !def.$) return value;
       for (i = 0; i < value.length; i++) {
-        value[i] = this._transformTree(value[i], def.$, transformType);
+        value[i] = this._transformTree(value[i], def && def.$, transformType);
       }
     }
     return value;
