@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
   "browser": "dist/browser/firecrypt.js",
