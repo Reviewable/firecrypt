@@ -18,12 +18,8 @@ class Crypto {
     switch (options.compression) {
       case 'deflate':
         this._compress = str => {
-          const timeoutHandle = setTimeout(() => {
-            console.log(`FireCrypt: compressing string of length ${str.length} is taking too long`);
-          }, 10000);
           const inputU8 = fflate.strToU8(str);
           const outputU8 = fflate.deflateSync(inputU8, {level: 9, ...options.compressionOptions});
-          clearTimeout(timeoutHandle);
           const reduced = inputU8.byteLength > outputU8.byteLength;
           const stats = this.stats.compression;
           stats.thresholdAccuracy =
