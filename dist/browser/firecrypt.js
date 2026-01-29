@@ -499,7 +499,7 @@ var firecrypt = (function (exports) {
      * @return {string} The Firebase URL wrapped by this FireCryptQuery object.
      */
     toString() {
-      return decodeURIComponent(this._query.toString());
+      return this._query.toString();
     }
 
     on(eventType, callback, cancelCallback, context) {
@@ -789,7 +789,7 @@ var firecrypt = (function (exports) {
      * @return {string} The Firebase URL wrapped by this FireCryptReference object.
      */
     toString() {
-      return decodeURIComponent(this._ref.toString());
+      return this._ref.toString();
     }
 
     push() {

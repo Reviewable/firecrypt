@@ -48,7 +48,7 @@ export default class FireCryptQuery {
    * @return {string} The Firebase URL wrapped by this FireCryptQuery object.
    */
   toString() {
-    return decodeURIComponent(this._query.toString());
+    return this._query.toString();
   }
 
   on(eventType, callback, cancelCallback, context) {

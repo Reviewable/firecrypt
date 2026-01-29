@@ -132,7 +132,7 @@ export default class FireCryptReference {
    * @return {string} The Firebase URL wrapped by this FireCryptReference object.
    */
   toString() {
-    return decodeURIComponent(this._ref.toString());
+    return this._ref.toString();
   }
 
   push() {
