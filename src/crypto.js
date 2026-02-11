@@ -33,14 +33,14 @@ export default class Crypto {
     }
     this._compressionThreshold = options.compressionThreshold || 150;
 
-    if (typeof LRUCache === 'function') {
-      this._encryptionCache = new LRUCache({
-        max: options.encryptionCacheSize,
-        length: this._computeCacheItemSize,
+    if (typeof lrucache !== 'undefined') {
+      this._encryptionCache = new lrucache.LRUCache({
+        maxSize: options.encryptionCacheSize,
+        sizeCalculation: this._computeCacheItemSize,
       });
-      this._decryptionCache = new LRUCache({
-        max: options.decryptionCacheSize,
-        length: this._computeCacheItemSize,
+      this._decryptionCache = new lrucache.LRUCache({
+        maxSize: options.decryptionCacheSize,
+        sizeCalculation: this._computeCacheItemSize,
       });
     }
 

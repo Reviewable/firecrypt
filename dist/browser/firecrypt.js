@@ -41,14 +41,14 @@ var firecrypt = (function (exports) {
       }
       this._compressionThreshold = options.compressionThreshold || 150;
 
-      if (typeof LRUCache === 'function') {
-        this._encryptionCache = new LRUCache({
-          max: options.encryptionCacheSize,
-          length: this._computeCacheItemSize,
+      if (typeof lrucache !== 'undefined') {
+        this._encryptionCache = new lrucache.LRUCache({
+          maxSize: options.encryptionCacheSize,
+          sizeCalculation: this._computeCacheItemSize,
         });
-        this._decryptionCache = new LRUCache({
-          max: options.decryptionCacheSize,
-          length: this._computeCacheItemSize,
+        this._decryptionCache = new lrucache.LRUCache({
+          maxSize: options.decryptionCacheSize,
+          sizeCalculation: this._computeCacheItemSize,
         });
       }
 
@@ -921,7 +921,7 @@ var firecrypt = (function (exports) {
   if (typeof require !== 'undefined') {
     /* eslint-disable no-undef */
     if (typeof fflate === 'undefined') global.fflate = require('fflate');
-    if (typeof LRUCache === 'undefined') global.LRUCache = require('lru-cache');
+    if (typeof lrucache === 'undefined') global.lrucache = require('lru-cache');
     if (typeof CryptoJS === 'undefined') global.CryptoJS = require('crypto-js/core');
     require('crypto-js/lib-typedarrays');
     require('crypto-js/enc-base64');
