@@ -6,8 +6,7 @@
   "bin": {
     "recrypt": "./recrypt.js"
   },
-  "scripts": {
-  },
+  "scripts": {},
   "engines": {
     "node": ">=12.x"
   },
@@ -32,7 +31,7 @@
     "fflate": "^0.8.2",
     "firebase-admin": "^11.4.1",
     "lodash": "^4.17.20",
-    "lru-cache": "^6.0.0",
+    "lru-cache": "^11.2.6",
     "ms": "^2.1.2",
     "nodefire": "^3.1.2",
     "pace": "0.0.4",

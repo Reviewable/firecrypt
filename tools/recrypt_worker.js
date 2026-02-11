@@ -2,7 +2,7 @@
 
 const _ = require('lodash');
 const NodeFire = require('nodefire').default;
-const LRUCache = require('lru-cache');
+const {LRUCache} = require('lru-cache');
 const fflate = require('fflate');
 
 const CryptoJS = require('crypto-js/core');
@@ -15,9 +15,9 @@ const ALREADY_RECRYPTED = {};
 const CACHE_SIZE = 10 * 1000 * 1000;
 
 const caches = {
-  encryptNew: new LRUCache({max: CACHE_SIZE, length: computeCacheItemSize}),
-  encryptOld: new LRUCache({max: CACHE_SIZE, length: computeCacheItemSize}),
-  decrypt: new LRUCache({max: CACHE_SIZE, length: computeCacheItemSize})
+  encryptNew: new LRUCache({maxSize: CACHE_SIZE, sizeCalculation: computeCacheItemSize}),
+  encryptOld: new LRUCache({maxSize: CACHE_SIZE, sizeCalculation: computeCacheItemSize}),
+  decrypt: new LRUCache({maxSize: CACHE_SIZE, sizeCalculation: computeCacheItemSize})
 };
 _.forEach(caches, cache => {cache.stats = {hits: 0, misses: 0};});
 
