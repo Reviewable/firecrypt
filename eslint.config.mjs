@@ -17,7 +17,7 @@ export default [
         ...globals.es2017,
         CryptoJS: false,
         fflate: false,
-        LRUCache: false,
+        lrucache: false,
       },
       ecmaVersion: 2019,
       sourceType: 'module',
