@@ -1,6 +1,7 @@
 {
   "name": "firecrypt",
   "version": "5.0.0",
+  "packageManager": "yarn@4.13.0",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
   "browser": "dist/browser/firecrypt.js",
@@ -8,7 +9,9 @@
     "lint": "eslint",
     "build": "rollup -c rollup.config.js",
     "prepublish": "yarn build",
-    "update": "yarn upgrade-interactive --latest"
+    "update": "yarn up -R '*' && yarn dedupe --strategy highest",
+    "latest": "yarn npm-check-updates -i -m --packageManager yarn --install never && yarn install",
+    "upgrade": "reviewable-upgrade"
   },
   "repository": "https://github.com/Reviewable/firecrypt",
   "keywords": [
@@ -39,6 +42,7 @@
   },
   "devDependencies": {
     "eslint": "^9.39.1",
+    "npm-check-updates": "^20.0.0",
     "reviewable-configs": "Reviewable/reviewable-configs#master",
     "rollup": "^4.53.3",
     "rollup-plugin-minify-es": "^1.1.1"
