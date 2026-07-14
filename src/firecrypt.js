@@ -96,8 +96,7 @@ class FireCrypt {
           `Unknown encryption algorithm "${options.encryption}".`, 'BAD_CONFIG');
     }
 
-    // Make the encryption key check value available off of this FireCrypt instance and therefore
-    // off of admin.database().
+    // Make the encryption key check value available off of this FireCrypt instance.
     this.encryptionKeyCheckValue = result;
 
     return result;

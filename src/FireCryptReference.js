@@ -171,7 +171,7 @@ export default class FireCryptReference {
     if (typeof originalMethod !== 'function') {
       throw new Error(
         `childrenKeys() is not implemented. You must either provide a Firebase Database Reference
-        which implements childrenKeys() or npm install the firebase-children keys libary.`
+        which implements childrenKeys() or npm install the firebase-childrenkeys libary.`
       );
     }
 

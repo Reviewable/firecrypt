@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "packageManager": "yarn@4.13.0",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
@@ -35,7 +35,7 @@
   },
   "peerDependencies": {
     "firebase": "9.x || 10.x",
-    "firebase-admin": "10.x || 11.x || 12.x || 13.x"
+    "firebase-admin": "10.x || 11.x || 12.x || 13.x || 14.x"
   },
   "optionalDependencies": {
     "firebase-childrenkeys": "2.x || 3.x"
