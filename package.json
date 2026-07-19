@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "packageManager": "yarn@4.13.0",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
@@ -25,7 +25,7 @@
   },
   "homepage": "https://github.com/Reviewable/firecrypt",
   "engines": {
-    "node": ">=20.x"
+    "node": ">=24.x"
   },
   "dependencies": {
     "crypto-js": "^4.0.0",
@@ -41,8 +41,9 @@
     "firebase-childrenkeys": "2.x || 3.x"
   },
   "devDependencies": {
-    "eslint": "^9.39.1",
-    "npm-check-updates": "^20.0.0",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "npm-check-updates": "^22.2.9",
     "reviewable-configs": "Reviewable/reviewable-configs#master",
     "rollup": "^4.53.3",
     "rollup-plugin-minify-es": "^1.1.1"
