@@ -8,7 +8,7 @@
   "scripts": {
     "lint": "eslint",
     "build": "rollup -c rollup.config.js",
-    "prepublish": "yarn build",
+    "prepack": "yarn build",
     "update": "yarn up -R '*' && yarn dedupe --strategy highest",
     "latest": "yarn npm-check-updates -i -m --packageManager yarn --install never && yarn install",
     "upgrade": "reviewable-upgrade"
