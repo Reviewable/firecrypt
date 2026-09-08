@@ -7,6 +7,7 @@
   "browser": "dist/browser/firecrypt.js",
   "scripts": {
     "lint": "eslint",
+    "test": "yarn build && node --test",
     "build": "rollup -c rollup.config.js",
     "prepack": "yarn build",
     "update": "yarn up -R '*' && yarn dedupe --strategy highest",
