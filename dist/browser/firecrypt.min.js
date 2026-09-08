@@ -633,16 +633,12 @@ var firecrypt = (function (exports) {
     }
 
     _interceptOnDisconnectWrite(methodName, originalArguments, argIndex) {
-      const self = this;
+      const args = Array.prototype.slice.call(originalArguments);
+      if (argIndex >= 0 && argIndex < args.length) {
+        args[argIndex] = this._crypto.transformValue(this._path, args[argIndex], 'encrypt');
+      }
 
-      this[methodName] = function() {
-        const args = Array.prototype.slice.call(originalArguments);
-        if (argIndex >= 0 && argIndex < args.length) {
-          args[argIndex] = self._crypto.transformValue(self._path, args[argIndex], 'encrypt');
-        }
-
-        return self._originalOnDisconnect[methodName].apply(self._originalOnDisconnect, args);
-      };
+      return this._originalOnDisconnect[methodName].apply(this._originalOnDisconnect, args);
     }
 
     set() {
@@ -845,9 +841,11 @@ var firecrypt = (function (exports) {
     }
 
     onDisconnect() {
-      const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+      const crypto = this._firecrypt._crypto;
+      const path = crypto.refToPath(this._ref);
+      const encryptedRef = crypto.encryptRef(this._ref, path);
       return new FireCryptOnDisconnect(
-        encryptedRef, this._ref.onDisconnect.call(encryptedRef), this._crypto);
+        path, this._ref.onDisconnect.call(encryptedRef), crypto);
     }
 
     on() {

@@ -1,6 +1,6 @@
 {
   "name": "firecrypt",
-  "version": "5.2.1",
+  "version": "5.2.3",
   "packageManager": "yarn@4.13.0",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
