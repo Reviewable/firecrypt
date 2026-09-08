@@ -185,9 +185,11 @@ export default class FireCryptReference {
   }
 
   onDisconnect() {
-    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    const crypto = this._firecrypt._crypto;
+    const path = crypto.refToPath(this._ref);
+    const encryptedRef = crypto.encryptRef(this._ref, path);
     return new FireCryptOnDisconnect(
-      encryptedRef, this._ref.onDisconnect.call(encryptedRef), this._crypto);
+      path, this._ref.onDisconnect.call(encryptedRef), crypto);
   }
 
   on() {

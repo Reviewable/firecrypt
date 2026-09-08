@@ -6,16 +6,12 @@ export default class FireCryptOnDisconnect {
   }
 
   _interceptOnDisconnectWrite(methodName, originalArguments, argIndex) {
-    const self = this;
+    const args = Array.prototype.slice.call(originalArguments);
+    if (argIndex >= 0 && argIndex < args.length) {
+      args[argIndex] = this._crypto.transformValue(this._path, args[argIndex], 'encrypt');
+    }
 
-    this[methodName] = function() {
-      const args = Array.prototype.slice.call(originalArguments);
-      if (argIndex >= 0 && argIndex < args.length) {
-        args[argIndex] = self._crypto.transformValue(self._path, args[argIndex], 'encrypt');
-      }
-
-      return self._originalOnDisconnect[methodName].apply(self._originalOnDisconnect, args);
-    };
+    return this._originalOnDisconnect[methodName].apply(this._originalOnDisconnect, args);
   }
 
   set() {
