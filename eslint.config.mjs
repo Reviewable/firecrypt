@@ -27,7 +27,7 @@ export default [
     },
   },
   {
-    files: ['tools/*.js'],
+    files: ['tools/*.js', 'tests/*.cjs'],
     languageOptions: {
       globals: globals.node,
       ecmaVersion: 2024,
