@@ -1,12 +1,13 @@
 {
   "name": "firecrypt",
-  "version": "5.2.0",
+  "version": "5.2.1",
   "packageManager": "yarn@4.13.0",
   "description": "Transparent encryption for Firebase",
   "main": "dist/node/firecrypt.js",
   "browser": "dist/browser/firecrypt.js",
   "scripts": {
     "lint": "eslint",
+    "test": "yarn build && node --test",
     "build": "rollup -c rollup.config.js",
     "prepack": "yarn build",
     "update": "yarn up -R '*' && yarn dedupe --strategy highest",
