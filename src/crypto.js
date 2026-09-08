@@ -180,6 +180,9 @@ export default class Crypto {
           const keyParts = key.split('/');
           subDef = def;
           for (i = 0; i < keyParts.length; i++) {
+            // Firebase ignores empty path segments. Preserve separators in the output so
+            // equivalent keys remain distinct for Firebase's overlapping-path validation.
+            if (!keyParts[i]) continue;
             subDef = subDef && (subDef[keyParts[i]] || subDef.$);
             if (subDef && subDef['.encrypt'] && subDef['.encrypt'].key) {
               keyParts[i] =
