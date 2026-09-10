@@ -212,10 +212,7 @@ class Crypto {
     } else if (type === 'array') {
       if (transformType === 'encrypt' && !def.$) return value;
       // Keep writes and snapshot reads from mutating their input arrays.
-      value = value.slice();
-      for (i = 0; i < value.length; i++) {
-        value[i] = this._transformTree(value[i], def && def.$, transformType);
-      }
+      value = value.map(item => this._transformTree(item, def && def.$, transformType));
     }
     return value;
   }

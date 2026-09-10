@@ -202,3 +202,32 @@ test('transaction retries do not retain mutations from an earlier attempt', asyn
   assert.deepEqual(stored, [encrypt('secret')]);
   assert.deepEqual(result.snapshot.val(), ['secret', 'added']);
 });
+
+test('sparse array writes preserve holes instead of creating undefined elements', async () => {
+  const {database, writes} = createDatabase();
+  const input = new Array(4);
+  input[1] = 'secret';
+  Object.freeze(input);
+  const expected = new Array(4);
+  expected[1] = encrypt('secret');
+
+  await database.ref('records/person/items').set(input);
+
+  assert.deepEqual(writes[0].value, expected);
+  assert.deepEqual(Object.keys(input), ['1']);
+  assert.equal(input[1], 'secret');
+});
+
+test('sparse snapshot arrays preserve holes without mutating the backing array', async () => {
+  const stored = new Array(4);
+  stored[1] = encrypt('secret');
+  const {database} = createDatabase(stored);
+  const expected = new Array(4);
+  expected[1] = 'secret';
+  const snapshot = await database.ref('records/person/items').once('value');
+
+  assert.deepEqual(snapshot.val(), expected);
+  assert.deepEqual(snapshot.toJSON(), expected);
+  assert.deepEqual(Object.keys(stored), ['1']);
+  assert.equal(stored[1], encrypt('secret'));
+});
