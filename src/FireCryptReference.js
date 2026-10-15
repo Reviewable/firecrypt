@@ -18,9 +18,13 @@ export default class FireCryptReference {
   }
 
   _interceptQuery(methodName, originalArguments) {
-    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
-    const query = new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
+    const query = this._encryptQuery();
     return query[methodName].apply(query, originalArguments);
+  }
+
+  _encryptQuery() {
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    return new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
   }
 
   _interceptWrite(methodName, originalArguments, argIndex) {
@@ -193,11 +197,17 @@ export default class FireCryptReference {
   }
 
   on() {
-    return this._interceptQuery('on', arguments);
+    // Kept so that `off` on this same reference finds the listener without encrypting the path
+    // again.  That takes the key, which may have been released by the time the listener is torn
+    // down, for example when the user signs out.  Each call replaces it, so after a key change the
+    // reference keeps addressing the location its latest listener was added at.
+    this._listenerQuery = this._encryptQuery();
+    return this._listenerQuery.on.apply(this._listenerQuery, arguments);
   }
 
   off() {
-    return this._interceptQuery('off', arguments);
+    const query = this._listenerQuery || this._encryptQuery();
+    return query.off.apply(query, arguments);
   }
 
   once() {
