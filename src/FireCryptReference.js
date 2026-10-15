@@ -18,9 +18,13 @@ export default class FireCryptReference {
   }
 
   _interceptQuery(methodName, originalArguments) {
-    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
-    const query = new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
+    const query = this._encryptQuery();
     return query[methodName].apply(query, originalArguments);
+  }
+
+  _encryptQuery() {
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    return new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
   }
 
   _interceptWrite(methodName, originalArguments, argIndex) {
@@ -192,12 +196,51 @@ export default class FireCryptReference {
       path, this._ref.onDisconnect.call(encryptedRef), crypto);
   }
 
-  on() {
-    return this._interceptQuery('on', arguments);
+  on(eventType, callback, cancelCallback, context) {
+    const query = this._encryptQuery();
+    const result = query.on.apply(query, arguments);
+    // Remembered so that `off` on this same reference removes the listener at the location it was
+    // added at, without encrypting the path again.  That takes the key, which may have been
+    // released by the time the listener is torn down, for example when the user signs out, or may
+    // have changed since, moving the path's encrypted location.
+    this._listeners = this._listeners || [];
+    this._listeners.push({eventType, callback, context, query});
+    return result;
   }
 
-  off() {
-    return this._interceptQuery('off', arguments);
+  off(eventType, callback, context) {
+    const listeners = this._listeners || [];
+    const removed = listeners.filter(listener =>
+      (!eventType || listener.eventType === eventType) &&
+      (!callback || listener.callback === callback && (!context || listener.context === context))
+    );
+    this._listeners = listeners.filter(listener => !removed.includes(listener));
+
+    if (callback) {
+      // A listener this reference didn't add was added through an equivalent one, at the location
+      // the path encrypts to now.
+      if (!removed.length) return this._encryptQuery().off(eventType, callback, context);
+      for (const listener of removed) listener.query.off(eventType, callback, context);
+      return;
+    }
+
+    // Without a callback, every listener at the location goes, including those added through other
+    // references.  This reference's own may sit at locations the path no longer encrypts to, so
+    // those are cleared too, and the current one whenever the key is there to find it.
+    const cleared = new Set();
+    for (const {query} of removed) {
+      if (cleared.has(query.toString())) continue;
+      cleared.add(query.toString());
+      query.off(eventType, undefined, context);
+    }
+    let current;
+    try {
+      current = this._encryptQuery();
+    } catch (e) {
+      if (removed.length && e.firecrypt === 'NO_KEY') return;
+      throw e;
+    }
+    if (!cleared.has(current.toString())) current.off(eventType, undefined, context);
   }
 
   once() {
