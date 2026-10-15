@@ -673,9 +673,13 @@ var firecrypt = (function (exports) {
     }
 
     _interceptQuery(methodName, originalArguments) {
-      const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
-      const query = new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
+      const query = this._encryptQuery();
       return query[methodName].apply(query, originalArguments);
+    }
+
+    _encryptQuery() {
+      const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+      return new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
     }
 
     _interceptWrite(methodName, originalArguments, argIndex) {
@@ -847,12 +851,71 @@ var firecrypt = (function (exports) {
         path, this._ref.onDisconnect.call(encryptedRef), crypto);
     }
 
-    on() {
-      return this._interceptQuery('on', arguments);
+    on(eventType, callback, cancelCallbackOrContext, context) {
+      // Firebase takes the context in place of the cancel callback too.
+      let cancelCallback = cancelCallbackOrContext;
+      if (typeof cancelCallback !== 'function') {
+        if (cancelCallback && context === undefined) context = cancelCallback;
+        cancelCallback = undefined;
+      }
+      // Remembered so that `off` on this same reference removes the listener at the location it was
+      // added at, without encrypting the path again.  That takes the key, which may have been
+      // released by the time the listener is torn down, for example when the user signs out, or may
+      // have changed since, moving the path's encrypted location.  A listener Firebase cancels is
+      // gone already, so it's forgotten then;  otherwise `off` could later send a callback that's
+      // still registered elsewhere to this stale location.
+      const listener = {eventType, callback, context, query: this._encryptQuery()};
+      const self = this;
+      const retire = function(error) {
+        self._forgetListener(listener);
+        // eslint-disable-next-line no-invalid-this
+        if (cancelCallback) return cancelCallback.call(this, error);
+      };
+      const result = listener.query.on(eventType, callback, retire, context);
+      this._listeners = this._listeners || [];
+      this._listeners.push(listener);
+      return result;
     }
 
-    off() {
-      return this._interceptQuery('off', arguments);
+    _forgetListener(listener) {
+      if (this._listeners) this._listeners = this._listeners.filter(other => other !== listener);
+    }
+
+    off(eventType, callback, context) {
+      const listeners = this._listeners || [];
+      const matches = listener =>
+        (!eventType || listener.eventType === eventType) &&
+        (!callback || listener.callback === callback && (!context || listener.context === context));
+
+      if (callback) {
+        // Firebase counts registrations, removing one per call, so only the oldest matching one goes.
+        // A listener this reference didn't add was added through an equivalent one, at the location
+        // the path encrypts to now.
+        const listener = listeners.find(matches);
+        if (!listener) return this._encryptQuery().off(eventType, callback, context);
+        this._forgetListener(listener);
+        return listener.query.off(eventType, callback, context);
+      }
+
+      const removed = listeners.filter(matches);
+      this._listeners = listeners.filter(listener => !removed.includes(listener));
+      // Without a callback, every listener at the location goes, including those added through other
+      // references.  This reference's own may sit at locations the path no longer encrypts to, so
+      // those are cleared too, and the current one whenever the key is there to find it.
+      const cleared = new Set();
+      for (const {query} of removed) {
+        if (cleared.has(query.toString())) continue;
+        cleared.add(query.toString());
+        query.off(eventType, undefined, context);
+      }
+      let current;
+      try {
+        current = this._encryptQuery();
+      } catch (e) {
+        if (removed.length && e.firecrypt === 'NO_KEY') return;
+        throw e;
+      }
+      if (!cleared.has(current.toString())) current.off(eventType, undefined, context);
     }
 
     once() {
