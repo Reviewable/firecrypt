@@ -6,6 +6,7 @@ if (typeof require !== 'undefined') {
   require('crypto-js/lib-typedarrays');
   require('crypto-js/enc-base64');
   require('crypto-js/enc-base64url');
+  require('crypto-js/sha1');
   require('cryptojs-extension/build_node/siv');
   /* eslint-enable no-undef */
 }
@@ -73,6 +74,7 @@ class FireCrypt {
     this._crypto = new Crypto(options, specification);
 
     let result;
+    let keyHash = this._pathEncryption && this._pathEncryption.keyHash;
 
     switch (options.encryption) {
       case 'aes-siv':
@@ -80,6 +82,8 @@ class FireCrypt {
           throw new FireCryptError('You must specify a key to use AES encryption.', 'BAD_CONFIG');
         }
         result = this._setupAesSiv(options.key, options.keyCheckValue);
+        // Identifies the key without holding on to it, so that it outlives the key's release.
+        keyHash = CryptoJS.algo.SHA1.create().finalize(options.key).toString();
         break;
       case 'none':
         // Don't set any string encryption functions.
@@ -98,6 +102,14 @@ class FireCrypt {
 
     // Make the encryption key check value available off of this FireCrypt instance.
     this.encryptionKeyCheckValue = result;
+
+    // What decides where paths encrypt to:  the latest key, even once it's been released, and the
+    // specification, by identity.  Replaced only when either changes, so that references can tell
+    // whether a location they remember is still current;  see `FireCryptReference.off`.
+    if (!this._pathEncryption || keyHash !== this._pathEncryption.keyHash ||
+        specification !== this._pathEncryption.specification) {
+      this._pathEncryption = {keyHash, specification};
+    }
 
     return result;
   }

@@ -18,9 +18,13 @@ export default class FireCryptReference {
   }
 
   _interceptQuery(methodName, originalArguments) {
-    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
-    const query = new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
+    const query = this._encryptQuery();
     return query[methodName].apply(query, originalArguments);
+  }
+
+  _encryptQuery() {
+    const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+    return new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
   }
 
   _interceptWrite(methodName, originalArguments, argIndex) {
@@ -193,11 +197,42 @@ export default class FireCryptReference {
   }
 
   on() {
-    return this._interceptQuery('on', arguments);
+    const query = this._encryptQuery();
+    // Remembered so that `off` on this same reference can still find the listener once the key is
+    // gone, for example after the user signs out;  encrypting the path takes the key.  Set before
+    // calling into Firebase, which may invoke the callback, and so `off`, synchronously.
+    const encryption = this._firecrypt._pathEncryption;
+    // Listening under more than one key or specification may leave listeners at more than one
+    // location, and only the key can tell which one a callback was added at, so `off` then needs
+    // the key throughout.
+    if (this._listenerQuery && encryption !== this._listenerEncryption) {
+      this._listenedUnderOtherEncryptions = true;
+    }
+    this._listenerQuery = query;
+    this._listenerEncryption = encryption;
+    return query.on.apply(query, arguments);
   }
 
-  off() {
-    return this._interceptQuery('off', arguments);
+  off(eventType, callback) {
+    // With the key available, the path is encrypted afresh as always, so `off` addresses the same
+    // location an equivalent reference would.  Without it, a listener this reference added can
+    // still be removed where its latest `on` put it, as long as that was under the latest key and
+    // specification:  after a change, the callback may have been added again at the new location,
+    // through an equivalent reference, and removing it from the old one would report success while
+    // leaving it hanging.  Removing every listener at the location still needs the key for the same
+    // reason, since others may sit where only the key can find them.
+    let query;
+    try {
+      query = this._encryptQuery();
+    } catch (e) {
+      if (e.firecrypt !== 'NO_KEY' || !callback || !this._listenerQuery ||
+          this._listenedUnderOtherEncryptions ||
+          this._listenerEncryption !== this._firecrypt._pathEncryption) {
+        throw e;
+      }
+      query = this._listenerQuery;
+    }
+    return query.off.apply(query, arguments);
   }
 
   once() {
