@@ -673,9 +673,13 @@ var firecrypt = (function (exports) {
     }
 
     _interceptQuery(methodName, originalArguments) {
-      const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
-      const query = new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
+      const query = this._encryptQuery();
       return query[methodName].apply(query, originalArguments);
+    }
+
+    _encryptQuery() {
+      const encryptedRef = this._firecrypt._crypto.encryptRef(this._ref);
+      return new FireCryptQuery(encryptedRef, {}, this._ref, this._firecrypt);
     }
 
     _interceptWrite(methodName, originalArguments, argIndex) {
@@ -848,11 +852,34 @@ var firecrypt = (function (exports) {
     }
 
     on() {
-      return this._interceptQuery('on', arguments);
+      const query = this._encryptQuery();
+      // Remembered so that `off` on this same reference can still find the listener once the key is
+      // gone, for example after the user signs out;  encrypting the path takes the key.  Set before
+      // calling into Firebase, which may invoke the callback, and so `off`, synchronously.
+      this._listenerQuery = query;
+      this._listenerKeyHash = this._firecrypt._keyHash;
+      return query.on.apply(query, arguments);
     }
 
-    off() {
-      return this._interceptQuery('off', arguments);
+    off(eventType, callback) {
+      // With the key available, the path is encrypted afresh as always, so `off` addresses the same
+      // location an equivalent reference would.  Without it, a listener this reference added can
+      // still be removed where its latest `on` put it, as long as that was under the latest key:
+      // after a key change, the callback may have been added again at the new location, through an
+      // equivalent reference, and removing it from the old one would report success while leaving
+      // it hanging.  Removing every listener at the location still needs the key for the same
+      // reason, since others may sit where only the key can find them.
+      let query;
+      try {
+        query = this._encryptQuery();
+      } catch (e) {
+        if (e.firecrypt !== 'NO_KEY' || !callback || !this._listenerQuery ||
+            this._listenerKeyHash !== this._firecrypt._keyHash) {
+          throw e;
+        }
+        query = this._listenerQuery;
+      }
+      return query.off.apply(query, arguments);
     }
 
     once() {
@@ -926,6 +953,7 @@ var firecrypt = (function (exports) {
     require('crypto-js/lib-typedarrays');
     require('crypto-js/enc-base64');
     require('crypto-js/enc-base64url');
+    require('crypto-js/sha1');
     require('cryptojs-extension/build_node/siv');
     /* eslint-enable no-undef */
   }
@@ -996,6 +1024,9 @@ var firecrypt = (function (exports) {
             throw new FireCryptError('You must specify a key to use AES encryption.', 'BAD_CONFIG');
           }
           result = this._setupAesSiv(options.key, options.keyCheckValue);
+          // Identifies the latest key, even once it's been released, without holding on to the key
+          // itself;  see `FireCryptReference.off`.
+          this._keyHash = CryptoJS.algo.SHA1.create().finalize(options.key).toString();
           break;
         case 'none':
           // Don't set any string encryption functions.

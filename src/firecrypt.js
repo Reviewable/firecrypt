@@ -6,6 +6,7 @@ if (typeof require !== 'undefined') {
   require('crypto-js/lib-typedarrays');
   require('crypto-js/enc-base64');
   require('crypto-js/enc-base64url');
+  require('crypto-js/sha1');
   require('cryptojs-extension/build_node/siv');
   /* eslint-enable no-undef */
 }
@@ -80,6 +81,9 @@ class FireCrypt {
           throw new FireCryptError('You must specify a key to use AES encryption.', 'BAD_CONFIG');
         }
         result = this._setupAesSiv(options.key, options.keyCheckValue);
+        // Identifies the latest key, even once it's been released, without holding on to the key
+        // itself;  see `FireCryptReference.off`.
+        this._keyHash = CryptoJS.algo.SHA1.create().finalize(options.key).toString();
         break;
       case 'none':
         // Don't set any string encryption functions.
