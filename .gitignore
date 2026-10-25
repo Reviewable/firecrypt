@@ -5,3 +5,9 @@ node_modules/
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+tools/.yarn/*
+!tools/.yarn/patches
+!tools/.yarn/plugins
+!tools/.yarn/releases
+!tools/.yarn/sdks
+!tools/.yarn/versions
