@@ -13,6 +13,9 @@
   "bin": {
     "recrypt": "./recrypt.js"
   },
+  "scripts": {
+    "prepack": "corepack yarn install --immutable"
+  },
   "engines": {
     "node": ">=20.x"
   },
