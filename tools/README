@@ -6,9 +6,11 @@ For development, enable Corepack and run `yarn install --immutable` in this dire
 Release this package only through the repository's **Publish to npm** workflow on the
 `release` branch. Its `publish-tools` job runs the shared release action in this directory,
 which installs dependencies with the pinned Yarn version before packaging and publishing
-with npm. For local packaging checks, run `yarn install --immutable` before `npm pack`;
-bundling requires the installed `node_modules` tree. Runtime dependency changes require a
-new tools package version; dev-only changes do not unless they affect published output.
+with npm. Both `npm pack` and `npm publish` run the `prepack` hook, which installs the locked
+runtime tree with `corepack yarn install --immutable` before npm creates the archive. This
+also supports local packaging checks from a checkout without `node_modules`.
+Runtime dependency changes require a new tools package version; dev-only changes do not
+unless they affect published output.
 
 Options:
 
