@@ -3,9 +3,12 @@ A command-line tool for rotating the encryption key of a Firebase database that 
 You should ensure that nobody accesses the database while the keys are being rotated.  Also be careful that any parts of your database not explicitly described in the `firecrypt` rules files but situated under an encrypted key are small enough to be read and written in a single chunk.
 
 For development, enable Corepack and run `yarn install --immutable` in this directory.
-Releases use `npm pack` / `npm publish` to bundle the locked runtime dependencies installed by
-Yarn. Runtime dependency changes require a new tools package version; dev-only changes do not
-unless they affect published output.
+Release this package only through the repository's **Publish to npm** workflow on the
+`release` branch. Its `publish-tools` job runs the shared release action in this directory,
+which installs dependencies with the pinned Yarn version before packaging and publishing
+with npm. For local packaging checks, run `yarn install --immutable` before `npm pack`;
+bundling requires the installed `node_modules` tree. Runtime dependency changes require a
+new tools package version; dev-only changes do not unless they affect published output.
 
 Options:
 
