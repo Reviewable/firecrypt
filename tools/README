@@ -1,5 +1,12 @@
 A command-line tool for rotating the encryption key of a Firebase database that has been encrypted with [`firecrypt`](https://www.npmjs.com/package/firecrypt).  It can also remove the encryption altogether, or add it to an unencrypted database.
 
+Install the published command with npm:
+
+```bash
+npm install --global firecrypt-tools
+recrypt --help
+```
+
 You should ensure that nobody accesses the database while the keys are being rotated.  Also be careful that any parts of your database not explicitly described in the `firecrypt` rules files but situated under an encrypted key are small enough to be read and written in a single chunk.
 
 For development, enable Corepack and run `yarn install --immutable` in this directory.
