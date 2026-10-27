@@ -1,12 +1,21 @@
 {
   "name": "firecrypt-tools",
-  "version": "0.8.0",
+  "version": "0.8.1",
+  "packageManager": "yarn@4.13.0",
+  "bundleDependencies": true,
+  "files": [
+    "recrypt.js",
+    "recrypt_worker.js",
+    "README"
+  ],
   "description": "Utilities for managing a Firebase encrypted with firecrypt",
   "main": "recrypt.js",
   "bin": {
     "recrypt": "./recrypt.js"
   },
-  "scripts": {},
+  "scripts": {
+    "prepack": "corepack yarn install --immutable"
+  },
   "engines": {
     "node": ">=20.x"
   },
