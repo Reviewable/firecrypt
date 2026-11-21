@@ -12,7 +12,7 @@ export default class Crypto {
       case 'deflate':
         this._compress = str => {
           const inputU8 = fflate.strToU8(str);
-          const outputU8 = fflate.deflateSync(inputU8, {level: 9, ...options.compressionOptions});
+          const outputU8 = fflate.deflateSync(inputU8, options.compressionOptions);
           const reduced = inputU8.byteLength > outputU8.byteLength;
           const stats = this.stats.compression;
           stats.thresholdAccuracy =
@@ -31,18 +31,7 @@ export default class Crypto {
         throw new FireCryptError(
           `Unknown compression algorithm "${options.compression}".`, 'BAD_CONFIG');
     }
-    this._compressionThreshold = options.compressionThreshold || 150;
-
-    if (typeof lrucache !== 'undefined') {
-      this._encryptionCache = new lrucache.LRUCache({
-        maxSize: options.encryptionCacheSize,
-        sizeCalculation: this._computeCacheItemSize,
-      });
-      this._decryptionCache = new lrucache.LRUCache({
-        maxSize: options.decryptionCacheSize,
-        sizeCalculation: this._computeCacheItemSize,
-      });
-    }
+    this._compressionThreshold = options.compressionThreshold;
 
     if (typeof Buffer !== 'undefined') {
       /* eslint-disable no-undef */
@@ -87,10 +76,6 @@ export default class Crypto {
       }
     }
     return def;
-  }
-
-  _computeCacheItemSize(value, key) {
-    return key.length + (typeof value === 'string' ? value.length : 4);
   }
 
   setStringEncryptionFunctions(encryptString, decryptString) {
@@ -142,7 +127,7 @@ export default class Crypto {
     return def;
   }
 
-  transformValue(path, value, transformType) {
+  transformValue(path, value, transformType, size) {
     if (transformType !== 'encrypt' && transformType !== 'decrypt') {
       throw new Error(
         `Internal error: transform type must be either "encrypt" or "decrypt", ` +
@@ -150,19 +135,21 @@ export default class Crypto {
       );
     }
     try {
-      return this._transformTree(value, this.specForPath(path), transformType);
+      return this._transformTree(value, this.specForPath(path), transformType, size);
     } catch (e) {
       if (e.firecrypt) e.firecryptPath = path;
       throw e;
     }
   }
 
-  _transformTree(value, def, transformType) {
+  _transformTree(value, def, transformType, size) {
     // transformType is either 'encrypt' or 'decrypt'.
     if (!def && transformType === 'encrypt') return value;
     const type = this.getType(value);
+    const scalarsBefore = size && size.scalars;
     let i;
     if (/^(string|number|boolean)$/.test(type)) {
+      if (size) size.addScalar(value, type);
       const pattern = def && def['.encrypt'] && def['.encrypt'].value;
       if (transformType === 'decrypt' || pattern) {
         value = this[transformType](value, type, pattern, true);
@@ -199,13 +186,16 @@ export default class Crypto {
             key = this[transformType](key, 'string', subDef['.encrypt'].key, false);
           }
         }
-        transformedValue[key] = this._transformTree(subValue, subDef, transformType);
+        transformedValue[key] = this._transformTree(subValue, subDef, transformType, size);
       }
       value = transformedValue;
     } else if (type === 'array') {
       if (transformType === 'encrypt' && !def.$) return value;
       // Keep writes and snapshot reads from mutating their input arrays.
-      value = value.map(item => this._transformTree(item, def && def.$, transformType));
+      value = value.map(item => this._transformTree(item, def && def.$, transformType, size));
+    }
+    if (size && (type === 'object' || type === 'array') && size.scalars > scalarsBefore) {
+      size.containers++;
     }
     return value;
   }
@@ -227,9 +217,12 @@ export default class Crypto {
       value.length >= this._compressionThreshold;
     if (!this._encryptString && !shouldCompress) return value;
     let cacheKey;
-    if (this._encryptionCache) {
-      cacheKey = type.charAt(0) + pattern + '\x91' + value;
-      if (this._encryptionCache.has(cacheKey)) return this._encryptionCache.get(cacheKey);
+    const cache = this.cachePair && this.cachePair.encryption;
+    if (cache && pattern === '#') {
+      // The same plaintext can appear as both a path segment and a compressible value.
+      cacheKey = (shouldCompress ? 'c' : type.charAt(0)) + value;
+      const cached = cache.get(cacheKey);
+      if (cached !== undefined) return cached;
     }
     let typeCode = type.charAt(0).toUpperCase();
     let result;
@@ -249,7 +242,7 @@ export default class Crypto {
       }
       if (result !== value) {
         result = `\x91${typeCode}${result}\x92`;
-        if (this._encryptionCache) this._encryptionCache.set(cacheKey, result);
+        if (cache) cache.set(cacheKey, result);
       }
     } else {
       if (type !== 'string') {
@@ -284,9 +277,10 @@ export default class Crypto {
   }
 
   decrypt(value) {
-    if (this._decryptionCache && this._decryptionCache.has(value)) {
-      return this._decryptionCache.get(value);
-    }
+    if (typeof value !== 'string') return value;
+    const cache = this.cachePair && this.cachePair.decryption;
+    const cached = cache && cache.get(value);
+    if (cached !== undefined) return cached;
     if (!/\x91/.test(value)) return value;
     let result;
     const match = value.match(/^\x91(.)([^\x92]*)\x92$/);
@@ -340,7 +334,7 @@ export default class Crypto {
         return this._decryptString(encryptedString, true);
       });
     }
-    if (this._decryptionCache) this._decryptionCache.set(value, result);
+    if (cache) cache.set(value, result);
     return result;
   }
 

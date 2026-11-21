@@ -61,6 +61,16 @@ The `options` are as follows:
 * `compressionThreshold`: the minimum number of characters in a string before we should attempt compression.  Defaults to 150.
 * `compressionOptions`: options to pass to the compression function.  For `deflate` you can specify `{level: number}`, with the default being level 9 (the highest).
 
+Database wrappers with equivalent encryption, compression, and cache limits share a pair of caches.
+Call `releaseFireCryptCaches()` when disposing of a wrapper. Reconfiguration releases the previous
+configuration automatically, and the last release clears its caches. The module's
+`getFireCryptCacheStats()` returns one record per live configuration with the entry count, calculated
+size, capacity, and utilization (0–1) of each cache.
+
+`snapshot.valWithSize()` returns the decoded value and a separate `size` object with the raw data's
+child entries, nonempty containers, scalars, numbers, and rounded standalone string bytes.
+`snapshot.rawSize()` computes the same counts without decoding the value.
+
 If `encryption` is `aes-siv` then `configureFireCrypt()` will return a value that can be used to synchronously verify whether another key matches by passing it via `keyCheckValue`.  This can be useful if the key is distributed as part of a session, and you want to check if you need to invalidate the session because the key has been rotated.  Also, if the key doesn't match then decrypting will throw an exception later.
 
 The `specification` is a JSON structure similar to Firebase security rules but specifying which keys and values need to be encrypted instead.  The structure mimics that of your datastore and uses `$wildcards` in the same manner as security rules.

@@ -20,7 +20,7 @@ var firecrypt = (function (exports) {
         case 'deflate':
           this._compress = str => {
             const inputU8 = fflate.strToU8(str);
-            const outputU8 = fflate.deflateSync(inputU8, {level: 9, ...options.compressionOptions});
+            const outputU8 = fflate.deflateSync(inputU8, options.compressionOptions);
             const reduced = inputU8.byteLength > outputU8.byteLength;
             const stats = this.stats.compression;
             stats.thresholdAccuracy =
@@ -39,18 +39,7 @@ var firecrypt = (function (exports) {
           throw new FireCryptError(
             `Unknown compression algorithm "${options.compression}".`, 'BAD_CONFIG');
       }
-      this._compressionThreshold = options.compressionThreshold || 150;
-
-      if (typeof lrucache !== 'undefined') {
-        this._encryptionCache = new lrucache.LRUCache({
-          maxSize: options.encryptionCacheSize,
-          sizeCalculation: this._computeCacheItemSize,
-        });
-        this._decryptionCache = new lrucache.LRUCache({
-          maxSize: options.decryptionCacheSize,
-          sizeCalculation: this._computeCacheItemSize,
-        });
-      }
+      this._compressionThreshold = options.compressionThreshold;
 
       if (typeof Buffer !== 'undefined') {
         /* eslint-disable no-undef */
@@ -95,10 +84,6 @@ var firecrypt = (function (exports) {
         }
       }
       return def;
-    }
-
-    _computeCacheItemSize(value, key) {
-      return key.length + (typeof value === 'string' ? value.length : 4);
     }
 
     setStringEncryptionFunctions(encryptString, decryptString) {
@@ -150,7 +135,7 @@ var firecrypt = (function (exports) {
       return def;
     }
 
-    transformValue(path, value, transformType) {
+    transformValue(path, value, transformType, size) {
       if (transformType !== 'encrypt' && transformType !== 'decrypt') {
         throw new Error(
           `Internal error: transform type must be either "encrypt" or "decrypt", ` +
@@ -158,19 +143,21 @@ var firecrypt = (function (exports) {
         );
       }
       try {
-        return this._transformTree(value, this.specForPath(path), transformType);
+        return this._transformTree(value, this.specForPath(path), transformType, size);
       } catch (e) {
         if (e.firecrypt) e.firecryptPath = path;
         throw e;
       }
     }
 
-    _transformTree(value, def, transformType) {
+    _transformTree(value, def, transformType, size) {
       // transformType is either 'encrypt' or 'decrypt'.
       if (!def && transformType === 'encrypt') return value;
       const type = this.getType(value);
+      const scalarsBefore = size && size.scalars;
       let i;
       if (/^(string|number|boolean)$/.test(type)) {
+        if (size) size.addScalar(value, type);
         const pattern = def && def['.encrypt'] && def['.encrypt'].value;
         if (transformType === 'decrypt' || pattern) {
           value = this[transformType](value, type, pattern, true);
@@ -207,13 +194,16 @@ var firecrypt = (function (exports) {
               key = this[transformType](key, 'string', subDef['.encrypt'].key, false);
             }
           }
-          transformedValue[key] = this._transformTree(subValue, subDef, transformType);
+          transformedValue[key] = this._transformTree(subValue, subDef, transformType, size);
         }
         value = transformedValue;
       } else if (type === 'array') {
         if (transformType === 'encrypt' && !def.$) return value;
         // Keep writes and snapshot reads from mutating their input arrays.
-        value = value.map(item => this._transformTree(item, def && def.$, transformType));
+        value = value.map(item => this._transformTree(item, def && def.$, transformType, size));
+      }
+      if (size && (type === 'object' || type === 'array') && size.scalars > scalarsBefore) {
+        size.containers++;
       }
       return value;
     }
@@ -235,9 +225,12 @@ var firecrypt = (function (exports) {
         value.length >= this._compressionThreshold;
       if (!this._encryptString && !shouldCompress) return value;
       let cacheKey;
-      if (this._encryptionCache) {
-        cacheKey = type.charAt(0) + pattern + '\x91' + value;
-        if (this._encryptionCache.has(cacheKey)) return this._encryptionCache.get(cacheKey);
+      const cache = this.cachePair && this.cachePair.encryption;
+      if (cache && pattern === '#') {
+        // The same plaintext can appear as both a path segment and a compressible value.
+        cacheKey = (shouldCompress ? 'c' : type.charAt(0)) + value;
+        const cached = cache.get(cacheKey);
+        if (cached !== undefined) return cached;
       }
       let typeCode = type.charAt(0).toUpperCase();
       let result;
@@ -257,7 +250,7 @@ var firecrypt = (function (exports) {
         }
         if (result !== value) {
           result = `\x91${typeCode}${result}\x92`;
-          if (this._encryptionCache) this._encryptionCache.set(cacheKey, result);
+          if (cache) cache.set(cacheKey, result);
         }
       } else {
         if (type !== 'string') {
@@ -292,9 +285,10 @@ var firecrypt = (function (exports) {
     }
 
     decrypt(value) {
-      if (this._decryptionCache && this._decryptionCache.has(value)) {
-        return this._decryptionCache.get(value);
-      }
+      if (typeof value !== 'string') return value;
+      const cache = this.cachePair && this.cachePair.decryption;
+      const cached = cache && cache.get(value);
+      if (cached !== undefined) return cached;
       if (!/\x91/.test(value)) return value;
       let result;
       const match = value.match(/^\x91(.)([^\x92]*)\x92$/);
@@ -348,7 +342,7 @@ var firecrypt = (function (exports) {
           return this._decryptString(encryptedString, true);
         });
       }
-      if (this._decryptionCache) this._decryptionCache.set(value, result);
+      if (cache) cache.set(value, result);
       return result;
     }
 
@@ -400,6 +394,38 @@ var firecrypt = (function (exports) {
     }
   }
 
+  // Measures Firebase's val() output before FireCrypt transforms it.
+  class FirebaseValueSize {
+    constructor() {
+      this.containers = 0;
+      this.scalars = 0;
+      this.numbers = 0;
+      this.stringBytes = 0;
+    }
+
+    get entries() {
+      return Math.max(0, this.containers + this.scalars - 1);
+    }
+
+    addScalar(value, type) {
+      this.scalars++;
+      if (type === 'number') this.numbers++;
+      if (type === 'string') this.stringBytes += Math.ceil((16 + value.length) / 8) * 8;
+    }
+
+    count(value) {
+      if (value === null || value === undefined) return;
+      const type = typeof value;
+      if (type === 'object') {
+        const scalarsBefore = this.scalars;
+        for (const key of Object.keys(value)) this.count(value[key]);
+        if (this.scalars > scalarsBefore) this.containers++;
+      } else {
+        this.addScalar(value, type);
+      }
+    }
+  }
+
   class FireCryptSnapshot {
     constructor(snap, firecrypt) {
       this._ref = firecrypt._crypto.decryptRef(snap.ref);
@@ -418,6 +444,19 @@ var firecrypt = (function (exports) {
 
     val() {
       return this._firecrypt._crypto.transformValue(this._path, this._snap.val(), 'decrypt');
+    }
+
+    valWithSize() {
+      const size = new FirebaseValueSize();
+      const value = this._firecrypt._crypto.transformValue(
+        this._path, this._snap.val(), 'decrypt', size);
+      return {value, size};
+    }
+
+    rawSize() {
+      const size = new FirebaseValueSize();
+      size.count(this._snap.val());
+      return size;
     }
 
     child(childPath) {
@@ -953,6 +992,59 @@ var firecrypt = (function (exports) {
     }
   }
 
+  const configurations = new Map();
+
+  function sizeCalculation(value, key) {
+    return key.length + (typeof value === 'string' ? value.length : 4);
+  }
+
+  function acquireCaches(options, keyHash) {
+    if (typeof lrucache === 'undefined') return undefined;
+    const {encryption, compression, encryptionCacheSize, decryptionCacheSize} = options;
+    const compressionConfig = compression === 'deflate' ? [
+      options.compressionThreshold, options.compressionOptions.level, options.compressionOptions.mem,
+      options.compressionOptions.dictionary || null
+    ] : null;
+    const key = JSON.stringify([
+      encryption, keyHash, compression, compressionConfig, encryptionCacheSize, decryptionCacheSize
+    ]);
+    let pair = configurations.get(key);
+    if (!pair) {
+      pair = {
+        key,
+        users: 0,
+        encryption: new lrucache.LRUCache({maxSize: encryptionCacheSize, sizeCalculation}),
+        decryption: new lrucache.LRUCache({maxSize: decryptionCacheSize, sizeCalculation}),
+      };
+      configurations.set(key, pair);
+    }
+    pair.users++;
+    return pair;
+  }
+
+  function releaseCaches(pair) {
+    if (!pair || --pair.users) return;
+    pair.encryption.clear();
+    pair.decryption.clear();
+    configurations.delete(pair.key);
+  }
+
+  function getCacheStats(cache) {
+    return {
+      count: cache.size,
+      calculatedSize: cache.calculatedSize,
+      capacity: cache.maxSize,
+      utilization: cache.calculatedSize / cache.maxSize,
+    };
+  }
+
+  function getFireCryptCacheStats() {
+    return Array.from(configurations.values(), pair => ({
+      encryption: getCacheStats(pair.encryption),
+      decryption: getCacheStats(pair.decryption),
+    }));
+  }
+
   if (typeof require !== 'undefined') {
     /* eslint-disable no-undef */
     if (typeof fflate === 'undefined') global.fflate = require('fflate');
@@ -987,8 +1079,8 @@ var firecrypt = (function (exports) {
       }
     }
 
-    _setupAesSiv(key, checkValue) {
-      const siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
+    _setupAesSiv(crypto, key, checkValue) {
+      const siv = CryptoJS.SIV.create(key);
       const encryptString = strOrU8 => {
         const str = typeof strOrU8 === 'string' ? strOrU8 : CryptoJS.lib.WordArray.create(strOrU8);
         return CryptoJS.enc.Base64url.stringify(siv.encrypt(str));
@@ -999,7 +1091,7 @@ var firecrypt = (function (exports) {
         return decode ? CryptoJS.enc.Utf8.stringify(result) : result;
       };
 
-      this._crypto.setStringEncryptionFunctions(encryptString, decryptString);
+      crypto.setStringEncryptionFunctions(encryptString, decryptString);
 
       if (checkValue) decryptString(checkValue, true);
       return encryptString(CryptoJS.enc.Base64url.stringify(CryptoJS.lib.WordArray.random(10)));
@@ -1018,24 +1110,39 @@ var firecrypt = (function (exports) {
         );
       }
 
-      options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
-      options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
-      options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
+      const cacheSize = options.cacheSize || 5 * 1000 * 1000;
+      const compressionOptions = {level: 9, ...options.compressionOptions};
+      if (compressionOptions.level === undefined || compressionOptions.level === null) {
+        compressionOptions.level = 6;
+      }
+      if (compressionOptions.dictionary) {
+        compressionOptions.dictionary =
+          new Uint8Array(compressionOptions.dictionary.subarray(-32768));
+      }
+      options = {
+        ...options,
+        compressionOptions,
+        compressionThreshold: options.compressionThreshold || 150,
+        encryptionCacheSize: options.encryptionCacheSize || cacheSize,
+        decryptionCacheSize: options.decryptionCacheSize || cacheSize,
+      };
 
-      this._crypto = new Crypto(options, specification);
+      const crypto = new Crypto(options, specification);
 
       let result;
       let keyHash = this._pathEncryption && this._pathEncryption.keyHash;
 
       switch (options.encryption) {
-        case 'aes-siv':
+        case 'aes-siv': {
           if (!options.key) {
             throw new FireCryptError('You must specify a key to use AES encryption.', 'BAD_CONFIG');
           }
-          result = this._setupAesSiv(options.key, options.keyCheckValue);
-          // Identifies the key without holding on to it, so that it outlives the key's release.
-          keyHash = CryptoJS.algo.SHA1.create().finalize(options.key).toString();
+          const key = CryptoJS.enc.Base64.parse(options.key);
+          // Identify the effective key without retaining its bytes in the cache registry.
+          keyHash = CryptoJS.algo.SHA1.create().finalize(key).toString();
+          result = this._setupAesSiv(crypto, key, options.keyCheckValue);
           break;
+        }
         case 'none':
           // Don't set any string encryption functions.  Paths stay plain, which no key leads to.
           keyHash = null;
@@ -1044,13 +1151,17 @@ var firecrypt = (function (exports) {
           function throwNotSetUpError() {
             throw new FireCryptError('Encryption not set up', 'NO_KEY');
           }
-          this._crypto.setStringEncryptionFunctions(throwNotSetUpError, throwNotSetUpError);
+          crypto.setStringEncryptionFunctions(throwNotSetUpError, throwNotSetUpError);
           break;
         }
         default:
           throw new FireCryptError(
             `Unknown encryption algorithm "${options.encryption}".`, 'BAD_CONFIG');
       }
+
+      crypto.cachePair = acquireCaches(options, options.encryption === 'aes-siv' ? keyHash : null);
+      this.releaseFireCryptCaches();
+      this._crypto = crypto;
 
       // Make the encryption key check value available off of this FireCrypt instance.
       this.encryptionKeyCheckValue = result;
@@ -1064,6 +1175,12 @@ var firecrypt = (function (exports) {
       }
 
       return result;
+    }
+
+    releaseFireCryptCaches() {
+      if (!this._crypto) return;
+      releaseCaches(this._crypto.cachePair);
+      this._crypto.cachePair = undefined;
     }
 
     get fireCryptStats() {
@@ -1121,6 +1238,7 @@ var firecrypt = (function (exports) {
     return fc;
   }
 
+  exports.getFireCryptCacheStats = getFireCryptCacheStats;
   exports.wrapDatabase = wrapDatabase;
 
   return exports;

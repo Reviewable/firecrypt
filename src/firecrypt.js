@@ -14,6 +14,9 @@ if (typeof require !== 'undefined') {
 import Crypto from './crypto';
 import FireCryptError from './FireCryptError';
 import FireCryptReference from './FireCryptReference';
+import {acquireCaches, releaseCaches} from './cache';
+
+export {getFireCryptCacheStats} from './cache';
 
 class FireCrypt {
   constructor(db) {
@@ -36,8 +39,8 @@ class FireCrypt {
     }
   }
 
-  _setupAesSiv(key, checkValue) {
-    const siv = CryptoJS.SIV.create(CryptoJS.enc.Base64.parse(key));
+  _setupAesSiv(crypto, key, checkValue) {
+    const siv = CryptoJS.SIV.create(key);
     const encryptString = strOrU8 => {
       const str = typeof strOrU8 === 'string' ? strOrU8 : CryptoJS.lib.WordArray.create(strOrU8);
       return CryptoJS.enc.Base64url.stringify(siv.encrypt(str));
@@ -48,7 +51,7 @@ class FireCrypt {
       return decode ? CryptoJS.enc.Utf8.stringify(result) : result;
     };
 
-    this._crypto.setStringEncryptionFunctions(encryptString, decryptString);
+    crypto.setStringEncryptionFunctions(encryptString, decryptString);
 
     if (checkValue) decryptString(checkValue, true);
     return encryptString(CryptoJS.enc.Base64url.stringify(CryptoJS.lib.WordArray.random(10)));
@@ -67,24 +70,39 @@ class FireCrypt {
       );
     }
 
-    options.cacheSize = options.cacheSize || 5 * 1000 * 1000;
-    options.encryptionCacheSize = options.encryptionCacheSize || options.cacheSize;
-    options.decryptionCacheSize = options.decryptionCacheSize || options.cacheSize;
+    const cacheSize = options.cacheSize || 5 * 1000 * 1000;
+    const compressionOptions = {level: 9, ...options.compressionOptions};
+    if (compressionOptions.level === undefined || compressionOptions.level === null) {
+      compressionOptions.level = 6;
+    }
+    if (compressionOptions.dictionary) {
+      compressionOptions.dictionary =
+        new Uint8Array(compressionOptions.dictionary.subarray(-32768));
+    }
+    options = {
+      ...options,
+      compressionOptions,
+      compressionThreshold: options.compressionThreshold || 150,
+      encryptionCacheSize: options.encryptionCacheSize || cacheSize,
+      decryptionCacheSize: options.decryptionCacheSize || cacheSize,
+    };
 
-    this._crypto = new Crypto(options, specification);
+    const crypto = new Crypto(options, specification);
 
     let result;
     let keyHash = this._pathEncryption && this._pathEncryption.keyHash;
 
     switch (options.encryption) {
-      case 'aes-siv':
+      case 'aes-siv': {
         if (!options.key) {
           throw new FireCryptError('You must specify a key to use AES encryption.', 'BAD_CONFIG');
         }
-        result = this._setupAesSiv(options.key, options.keyCheckValue);
-        // Identifies the key without holding on to it, so that it outlives the key's release.
-        keyHash = CryptoJS.algo.SHA1.create().finalize(options.key).toString();
+        const key = CryptoJS.enc.Base64.parse(options.key);
+        // Identify the effective key without retaining its bytes in the cache registry.
+        keyHash = CryptoJS.algo.SHA1.create().finalize(key).toString();
+        result = this._setupAesSiv(crypto, key, options.keyCheckValue);
         break;
+      }
       case 'none':
         // Don't set any string encryption functions.  Paths stay plain, which no key leads to.
         keyHash = null;
@@ -93,13 +111,17 @@ class FireCrypt {
         function throwNotSetUpError() {
           throw new FireCryptError('Encryption not set up', 'NO_KEY');
         }
-        this._crypto.setStringEncryptionFunctions(throwNotSetUpError, throwNotSetUpError);
+        crypto.setStringEncryptionFunctions(throwNotSetUpError, throwNotSetUpError);
         break;
       }
       default:
         throw new FireCryptError(
           `Unknown encryption algorithm "${options.encryption}".`, 'BAD_CONFIG');
     }
+
+    crypto.cachePair = acquireCaches(options, options.encryption === 'aes-siv' ? keyHash : null);
+    this.releaseFireCryptCaches();
+    this._crypto = crypto;
 
     // Make the encryption key check value available off of this FireCrypt instance.
     this.encryptionKeyCheckValue = result;
@@ -113,6 +135,12 @@ class FireCrypt {
     }
 
     return result;
+  }
+
+  releaseFireCryptCaches() {
+    if (!this._crypto) return;
+    releaseCaches(this._crypto.cachePair);
+    this._crypto.cachePair = undefined;
   }
 
   get fireCryptStats() {
