@@ -62,10 +62,11 @@ The `options` are as follows:
 * `compressionOptions`: options to pass to the compression function.  For `deflate` you can specify `{level: number}`, with the default being level 9 (the highest).
 
 Database wrappers with equivalent encryption, compression, and cache limits share a pair of caches.
-Call `releaseFireCryptCaches()` when disposing of a wrapper. Reconfiguration releases the previous
+Call `release()` when disposing of a wrapper. Reconfiguration releases the previous
 configuration automatically, and the last release clears its caches. The module's
 `getFireCryptCacheStats()` returns one record per live configuration with the entry count, calculated
-size, capacity, and utilization (0–1) of each cache.
+size, capacity, and utilization (0–1) of each cache. `db.fireCryptStats.caches` reports the pair
+used by that wrapper alongside its existing compression stats.
 
 `snapshot.valWithSize()` returns the decoded value and a separate `size` object with the raw data's
 child entries, nonempty containers, scalars, numbers, and rounded standalone string bytes.

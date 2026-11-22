@@ -44,9 +44,14 @@ function getCacheStats(cache) {
   };
 }
 
-export function getFireCryptCacheStats() {
-  return Array.from(configurations.values(), pair => ({
+export function getCachePairStats(pair) {
+  if (!pair) return undefined;
+  return {
     encryption: getCacheStats(pair.encryption),
     decryption: getCacheStats(pair.decryption),
-  }));
+  };
+}
+
+export function getFireCryptCacheStats() {
+  return Array.from(configurations.values(), getCachePairStats);
 }

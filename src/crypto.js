@@ -218,9 +218,10 @@ export default class Crypto {
     if (!this._encryptString && !shouldCompress) return value;
     let cacheKey;
     const cache = this.cachePair && this.cachePair.encryption;
-    if (cache && pattern === '#') {
-      // The same plaintext can appear as both a path segment and a compressible value.
-      cacheKey = (shouldCompress ? 'c' : type.charAt(0)) + value;
+    if (cache && (pattern === '#' || type === 'string' && pattern)) {
+      // Separate full-value encryption, compression, and partial patterns.
+      cacheKey = pattern === '#' ? (shouldCompress ? 'c' : type.charAt(0)) + value :
+        `p${pattern.length}:${pattern}${value}`;
       const cached = cache.get(cacheKey);
       if (cached !== undefined) return cached;
     }
@@ -242,7 +243,6 @@ export default class Crypto {
       }
       if (result !== value) {
         result = `\x91${typeCode}${result}\x92`;
-        if (cache) cache.set(cacheKey, result);
       }
     } else {
       if (type !== 'string') {
@@ -261,6 +261,7 @@ export default class Crypto {
         return part;
       });
     }
+    if (cacheKey !== undefined && result !== value) cache.set(cacheKey, result);
     return result;
   }
 

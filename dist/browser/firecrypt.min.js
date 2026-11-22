@@ -226,9 +226,10 @@ var firecrypt = (function (exports) {
       if (!this._encryptString && !shouldCompress) return value;
       let cacheKey;
       const cache = this.cachePair && this.cachePair.encryption;
-      if (cache && pattern === '#') {
-        // The same plaintext can appear as both a path segment and a compressible value.
-        cacheKey = (shouldCompress ? 'c' : type.charAt(0)) + value;
+      if (cache && (pattern === '#' || type === 'string' && pattern)) {
+        // Separate full-value encryption, compression, and partial patterns.
+        cacheKey = pattern === '#' ? (shouldCompress ? 'c' : type.charAt(0)) + value :
+          `p${pattern.length}:${pattern}${value}`;
         const cached = cache.get(cacheKey);
         if (cached !== undefined) return cached;
       }
@@ -250,7 +251,6 @@ var firecrypt = (function (exports) {
         }
         if (result !== value) {
           result = `\x91${typeCode}${result}\x92`;
-          if (cache) cache.set(cacheKey, result);
         }
       } else {
         if (type !== 'string') {
@@ -269,6 +269,7 @@ var firecrypt = (function (exports) {
           return part;
         });
       }
+      if (cacheKey !== undefined && result !== value) cache.set(cacheKey, result);
       return result;
     }
 
@@ -1038,11 +1039,16 @@ var firecrypt = (function (exports) {
     };
   }
 
-  function getFireCryptCacheStats() {
-    return Array.from(configurations.values(), pair => ({
+  function getCachePairStats(pair) {
+    if (!pair) return undefined;
+    return {
       encryption: getCacheStats(pair.encryption),
       decryption: getCacheStats(pair.decryption),
-    }));
+    };
+  }
+
+  function getFireCryptCacheStats() {
+    return Array.from(configurations.values(), getCachePairStats);
   }
 
   if (typeof require !== 'undefined') {
@@ -1160,7 +1166,7 @@ var firecrypt = (function (exports) {
       }
 
       crypto.cachePair = acquireCaches(options, options.encryption === 'aes-siv' ? keyHash : null);
-      this.releaseFireCryptCaches();
+      this._releaseCaches();
       this._crypto = crypto;
 
       // Make the encryption key check value available off of this FireCrypt instance.
@@ -1177,7 +1183,11 @@ var firecrypt = (function (exports) {
       return result;
     }
 
-    releaseFireCryptCaches() {
+    release() {
+      this._releaseCaches();
+    }
+
+    _releaseCaches() {
       if (!this._crypto) return;
       releaseCaches(this._crypto.cachePair);
       this._crypto.cachePair = undefined;
@@ -1185,7 +1195,7 @@ var firecrypt = (function (exports) {
 
     get fireCryptStats() {
       this._ensureEncryptionConfigured();
-      return this._crypto.stats;
+      return {...this._crypto.stats, caches: getCachePairStats(this._crypto.cachePair)};
     }
 
     goOnline() {

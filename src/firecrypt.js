@@ -14,7 +14,7 @@ if (typeof require !== 'undefined') {
 import Crypto from './crypto';
 import FireCryptError from './FireCryptError';
 import FireCryptReference from './FireCryptReference';
-import {acquireCaches, releaseCaches} from './cache';
+import {acquireCaches, getCachePairStats, releaseCaches} from './cache';
 
 export {getFireCryptCacheStats} from './cache';
 
@@ -120,7 +120,7 @@ class FireCrypt {
     }
 
     crypto.cachePair = acquireCaches(options, options.encryption === 'aes-siv' ? keyHash : null);
-    this.releaseFireCryptCaches();
+    this._releaseCaches();
     this._crypto = crypto;
 
     // Make the encryption key check value available off of this FireCrypt instance.
@@ -137,7 +137,11 @@ class FireCrypt {
     return result;
   }
 
-  releaseFireCryptCaches() {
+  release() {
+    this._releaseCaches();
+  }
+
+  _releaseCaches() {
     if (!this._crypto) return;
     releaseCaches(this._crypto.cachePair);
     this._crypto.cachePair = undefined;
@@ -145,7 +149,7 @@ class FireCrypt {
 
   get fireCryptStats() {
     this._ensureEncryptionConfigured();
-    return this._crypto.stats;
+    return {...this._crypto.stats, caches: getCachePairStats(this._crypto.cachePair)};
   }
 
   goOnline() {
