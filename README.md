@@ -61,12 +61,17 @@ The `options` are as follows:
 * `compressionThreshold`: the minimum number of characters in a string before we should attempt compression.  Defaults to 150.
 * `compressionOptions`: options to pass to the compression function.  For `deflate` you can specify `{level: number}`, with the default being level 9 (the highest).
 
-Database wrappers with equivalent encryption, compression, and cache limits share a pair of caches.
-Call `release()` when disposing of a wrapper. Reconfiguration releases the previous
-configuration automatically, and the last release clears its caches. The module's
-`getFireCryptCacheStats()` returns one record per live configuration with the entry count, calculated
-size, capacity, and utilization (0–1) of each cache. `db.fireCryptStats.caches` reports the pair
-used by that wrapper alongside its existing compression stats.
+In runtimes with weak references and finalizers, wrappers with equivalent encryption, compression,
+and limits share a cache pair. A pair becomes eligible for collection when its last owner is gone.
+`getFireCryptCacheStats()` reports each live shared pair. `db.fireCryptStats.caches` reports the
+pair used by that wrapper alongside its existing compression stats. Each direction exposes entry
+count, calculated size, capacity, and utilization (0–1).
+
+Keep the compression configuration stable for equality queries on stored values. An equality query
+on an encrypted value uses the same compression settings as a write, while encrypted keys always use
+uncompressed ciphertext. Older versions could write a compressed key when the same plaintext first
+warmed the value cache. Direct lookups use the canonical uncompressed key, so affected data needs
+migration before upgrading.
 
 `snapshot.valWithSize()` returns the decoded value and a separate `size` object with the raw data's
 child entries, nonempty containers, scalars, numbers, and rounded standalone string bytes.

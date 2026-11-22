@@ -18,6 +18,8 @@ export default [
         CryptoJS: false,
         fflate: false,
         lrucache: false,
+        WeakRef: false,
+        FinalizationRegistry: false,
       },
       ecmaVersion: 2019,
       sourceType: 'module',

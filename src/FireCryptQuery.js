@@ -97,7 +97,8 @@ export default class FireCryptQuery {
   equalTo(value, key) {
     if (this._order[this._order.by + 'Encrypted']) {
       value = this._firecrypt._crypto.encrypt(
-        value, this._firecrypt._crypto.getType(value), this._order[this._order.by + 'Encrypted']);
+        value, this._firecrypt._crypto.getType(value), this._order[this._order.by + 'Encrypted'],
+        this._order.by !== 'key');
     }
     if (key !== undefined && this._order.keyEncrypted) {
       key = this._firecrypt._crypto.encrypt(key, 'string', this._order.keyEncrypted);
