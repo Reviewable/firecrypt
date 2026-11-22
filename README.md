@@ -68,10 +68,15 @@ pair used by that wrapper alongside its existing compression stats. Each directi
 count, calculated size, capacity, and utilization (0–1).
 
 Keep the compression configuration stable for equality queries on stored values. An equality query
-on an encrypted value uses the same compression settings as a write, while encrypted keys always use
-uncompressed ciphertext. Older versions could write a compressed key when the same plaintext first
-warmed the value cache. Direct lookups use the canonical uncompressed key, so affected data needs
-migration before upgrading.
+on an encrypted value uses the same compression settings as a write.
+
+**Upgrading to FireCrypt 6.0.0.** Encrypted keys always use uncompressed ciphertext. Earlier
+versions could write a compressed key when the same plaintext first warmed the value cache. Direct
+lookups and writes use the canonical uncompressed key. A write can therefore create a second child
+when a compressed spelling already exists. Both children remain stored in Firebase. In a decrypted
+parent snapshot, both spellings decode to the same property and the last child visited overwrites
+the first in the returned object. Inspect the raw data and reconcile any such children before
+migrating affected keys.
 
 `snapshot.valWithSize()` returns the decoded value and a separate `size` object with the raw data's
 child entries, nonempty containers, scalars, numbers, and rounded standalone string bytes.
