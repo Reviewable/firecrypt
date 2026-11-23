@@ -1,4 +1,5 @@
 import FireCryptReference from './FireCryptReference';
+import FirebaseValueSize from './FirebaseValueSize';
 
 export default class FireCryptSnapshot {
   constructor(snap, firecrypt) {
@@ -18,6 +19,19 @@ export default class FireCryptSnapshot {
 
   val() {
     return this._firecrypt._crypto.transformValue(this._path, this._snap.val(), 'decrypt');
+  }
+
+  valWithSize() {
+    const size = new FirebaseValueSize();
+    const value = this._firecrypt._crypto.transformValue(
+      this._path, this._snap.val(), 'decrypt', size);
+    return {value, size};
+  }
+
+  rawSize() {
+    const size = new FirebaseValueSize();
+    size.count(this._snap.val());
+    return size;
   }
 
   child(childPath) {

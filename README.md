@@ -61,6 +61,27 @@ The `options` are as follows:
 * `compressionThreshold`: the minimum number of characters in a string before we should attempt compression.  Defaults to 150.
 * `compressionOptions`: options to pass to the compression function.  For `deflate` you can specify `{level: number}`, with the default being level 9 (the highest).
 
+In runtimes with weak references and finalizers, wrappers with equivalent encryption, compression,
+and limits share a cache pair. A pair becomes eligible for collection when its last owner is gone.
+`getFireCryptCacheStats()` reports each live shared pair. `db.fireCryptStats.caches` reports the
+pair used by that wrapper alongside its existing compression stats. Each direction exposes entry
+count, calculated size, capacity, and utilization (0–1).
+
+Keep the compression configuration stable for equality queries on stored values. An equality query
+on an encrypted value uses the same compression settings as a write.
+
+**Upgrading to FireCrypt 6.0.0.** Encrypted keys always use uncompressed ciphertext. Earlier
+versions could write a compressed key when the same plaintext first warmed the value cache. Direct
+lookups and writes use the canonical uncompressed key. A write can therefore create a second child
+when a compressed spelling already exists. Both children remain stored in Firebase. In a decrypted
+parent snapshot, both spellings decode to the same property and the last child visited overwrites
+the first in the returned object. Inspect the raw data and reconcile any such children before
+migrating affected keys.
+
+`snapshot.valWithSize()` returns the decoded value and a separate `size` object with the raw data's
+child entries, nonempty containers, scalars, numbers, and rounded standalone string bytes.
+`snapshot.rawSize()` computes the same counts without decoding the value.
+
 If `encryption` is `aes-siv` then `configureFireCrypt()` will return a value that can be used to synchronously verify whether another key matches by passing it via `keyCheckValue`.  This can be useful if the key is distributed as part of a session, and you want to check if you need to invalidate the session because the key has been rotated.  Also, if the key doesn't match then decrypting will throw an exception later.
 
 The `specification` is a JSON structure similar to Firebase security rules but specifying which keys and values need to be encrypted instead.  The structure mimics that of your datastore and uses `$wildcards` in the same manner as security rules.

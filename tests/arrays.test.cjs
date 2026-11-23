@@ -1,8 +1,10 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const {createHash} = require('node:crypto');
 const {test} = require('node:test');
-const {wrapDatabase} = require('../dist/node/firecrypt');
+const {setImmediate: nextTurn} = require('node:timers/promises');
+const {getFireCryptCacheStats, wrapDatabase} = require('../dist/node/firecrypt');
 const CryptoJS = require('crypto-js');
 
 const key = Buffer.alloc(32, 0x42).toString('base64');
@@ -17,7 +19,7 @@ function encrypt(value) {
     CryptoJS.enc.Base64url.stringify(siv.encrypt(text)) + '\x92';
 }
 
-function createDatabase(storedValue = null, attempts = 1) {
+function createDatabase(storedValue = null, attempts = 1, options = {}) {
   const writes = [];
 
   class Reference {
@@ -61,10 +63,20 @@ function createDatabase(storedValue = null, attempts = 1) {
     }
 
     once() {return Promise.resolve(this.snapshot(storedValue));}
+
+    orderByKey() {return this;}
+    orderByValue() {return this;}
+    orderByChild() {return this;}
+
+    equalTo(candidate, tieKey) {
+      this.capture('equalTo', {value: candidate, key: tieKey});
+      return this;
+    }
   }
 
   const database = wrapDatabase({app: {}, ref: (path = '') => new Reference().child(path)});
-  database.configureFireCrypt({encryption: 'aes-siv', compression: 'none', key}, {
+  const configuration = {encryption: 'aes-siv', compression: 'none', key, ...options};
+  const specification = {
     rules: {
       records: {
         $record: {
@@ -83,9 +95,190 @@ function createDatabase(storedValue = null, attempts = 1) {
         },
       },
     },
-  });
-  return {database, writes};
+  };
+  database.configureFireCrypt(configuration, specification);
+  return {configuration, database, specification, writes};
 }
+
+test('measured reads count stored values through decryption cache hits', async () => {
+  const stored = [encrypt(false), encrypt(0), encrypt(''), null, {empty: null, value: 12}];
+  const {database} = createDatabase(stored);
+  const snap = await database.ref().once('value');
+  assert.deepEqual(snap.val(), [false, 0, '', null, {empty: null, value: 12}]);
+  const actual = snap.valWithSize();
+  assert.deepEqual(actual.value, snap.val());
+  assert.equal(actual.size.entries, 5);
+  assert.equal(actual.size.containers, 2);
+  assert.equal(actual.size.scalars, 4);
+  assert.equal(actual.size.numbers, 1);
+  assert.equal(actual.size.stringBytes,
+    stored.slice(0, 3).reduce((sum, str) => sum + Math.ceil((16 + str.length) / 8) * 8, 0));
+  assert.deepEqual(actual.size, snap.rawSize());
+});
+
+test('equivalent wrappers share caches across repeated configuration', async () => {
+  const configuration = {
+    compression: 'deflate', encryptionCacheSize: 6001, decryptionCacheSize: 6002
+  };
+  const value = 'compressible'.repeat(75);
+  const first = createDatabase(null, 1, configuration);
+  await first.database.ref('records/person/items').set([value]);
+  const raw = first.writes.at(-1).value[0];
+  assert.ok(raw.startsWith('\x91E'));
+  const second = createDatabase(raw, 1, {...configuration, compressionOptions: {level: 9}});
+  const stats = () => getFireCryptCacheStats().filter(item => item.encryption.capacity === 6001);
+  await second.database.ref('records/person/items').set([value]);
+  assert.equal(second.database.fireCryptStats.compression.attempts, 0);
+  assert.equal(first.database.fireCryptStats.compression.attempts, 1);
+  assert.equal(stats().length, 1);
+  const snap = await second.database.ref().once('value');
+  assert.equal(snap.valWithSize().value, value);
+  assert.equal(snap.valWithSize().size.stringBytes, Math.ceil((16 + raw.length) / 8) * 8);
+  assert.deepEqual(stats()[0].decryption, {
+    count: 1, calculatedSize: raw.length + value.length, capacity: 6002,
+    utilization: (raw.length + value.length) / 6002,
+  });
+
+  const before = stats();
+  assert.deepEqual(first.database.fireCryptStats.caches, before[0]);
+  assert.deepEqual(second.database.fireCryptStats.caches, before[0]);
+  second.database.configureFireCrypt(second.configuration, second.specification);
+  assert.deepEqual(second.database.fireCryptStats.caches, before[0]);
+  assert.deepEqual(stats(), before);
+  assert.equal(snap.val(), value);
+});
+
+test('strings deflate cannot shrink round-trip with a cold decryption cache', async () => {
+  const value = createHash('shake256', {outputLength: 150}).update('firecrypt-uncompressible')
+    .digest().map(byte => 32 + byte % 95).toString('ascii');
+  const {database, writes, configuration} = createDatabase(null, 1, {
+    compression: 'deflate', encryptionCacheSize: 6021
+  });
+  await database.ref('records/person/items').set([value]);
+  const stats = database.fireCryptStats.compression;
+  assert.equal(stats.attempts, 1);
+  assert.equal(stats.thresholdAccuracy, 0);
+  const stored = writes.at(-1).value[0];
+  const {database: reader} = createDatabase(stored, 1, {
+    ...configuration, decryptionCacheSize: 6022
+  });
+  const snapshot = await reader.ref().once('value');
+  assert.equal(snapshot.val(), value);
+  assert.equal(stored, encrypt(value));
+
+  const plaintext = createDatabase(null, 1, {...configuration, encryption: 'none'});
+  await plaintext.database.ref('records/person/items').set([value]);
+  assert.deepEqual(plaintext.writes.at(-1).value, [value]);
+});
+
+test('configuration changes isolate keys, modes, compression, and limits', async () => {
+  const configuration = {cacheSize: 6003};
+  const first = createDatabase(encrypt('secret'), 1, configuration);
+  const second = createDatabase(encrypt('secret'), 1, configuration);
+  const snap = await first.database.ref().once('value');
+  const otherSnap = await second.database.ref().once('value');
+  assert.equal(snap.val(), 'secret');
+  const stats = () => getFireCryptCacheStats().filter(item => item.decryption.capacity === 6003);
+  const otherKey = Buffer.alloc(32, 89).toString('base64');
+  assert.throws(() => second.database.configureFireCrypt(
+    {...second.configuration, key: otherKey, keyCheckValue: first.database.encryptionKeyCheckValue},
+    second.specification), {firecrypt: 'WRONG_KEY'});
+  assert.equal(stats().length, 1);
+  assert.equal(otherSnap.val(), 'secret');
+  for (const changes of [
+    {key: otherKey}, {encryption: 'notready'}, {compression: 'deflate'},
+    {compression: 'deflate', compressionOptions: {level: 4}}, {encryptionCacheSize: 6004}
+  ]) {
+    second.database.configureFireCrypt({...second.configuration, ...changes}, second.specification);
+    assert.equal(first.database.fireCryptStats.caches.decryption.count, 1);
+    assert.equal(second.database.fireCryptStats.caches.decryption.count, 0);
+    if (changes.key) assert.throws(() => otherSnap.val(), {firecrypt: 'WRONG_KEY'});
+    if (changes.encryption) assert.throws(() => otherSnap.val(), {firecrypt: 'NO_KEY'});
+  }
+  assert.equal(snap.val(), 'secret');
+});
+
+test('compressible values do not warm encryption cache entries for path segments', async () => {
+  const {database, writes} = createDatabase(null, 1, {compression: 'deflate'});
+  const value = 'same'.repeat(100);
+  await database.ref('records/person/items').set([value]);
+  await database.ref('records').child(value).child('public').set('test');
+  assert.ok(writes[0].value[0].startsWith('\x91E'));
+  assert.equal(writes[1].path.split('/')[1], encrypt(value));
+});
+
+test('caches partial encryption by pattern across equivalent wrappers', async () => {
+  const options = {encryptionCacheSize: 6011};
+  const first = createDatabase(null, 1, options);
+  const second = createDatabase(null, 1, options);
+  const path = 'records/person/patterned';
+  await first.database.ref(path).set(['left|right']);
+  assert.deepEqual(first.writes.at(-1).value, [encrypt('left') + '|right']);
+  // One encrypted path segment and one partial value.
+  assert.equal(first.database.fireCryptStats.caches.encryption.count, 2);
+
+  second.specification.rules.records.$.patterned = {$: {'.encrypt': {value: '.|#'}}};
+  second.database.configureFireCrypt(second.configuration, second.specification);
+  await second.database.ref(path).set(['left|right']);
+  assert.deepEqual(second.writes.at(-1).value, ['left|' + encrypt('right')]);
+  assert.equal(first.database.fireCryptStats.caches.encryption.count, 3);
+
+  await first.database.ref(path).set(['left|right']);
+  assert.deepEqual(first.writes.at(-1).value, [encrypt('left') + '|right']);
+  assert.equal(second.database.fireCryptStats.caches.encryption.count, 3);
+});
+
+test('unreferenced wrappers do not retain shared cache pairs', {
+  skip: typeof global.gc !== 'function'
+}, async () => {
+  const cachedPairExists = () => getFireCryptCacheStats().some(({encryption}) =>
+    encryption.capacity === 6012);
+  createDatabase(null, 1, {encryptionCacheSize: 6012});
+  assert.equal(cachedPairExists(), true);
+  for (let attempt = 0; attempt < 10; attempt++) {
+    // deref() keeps its target alive until the end of this job.
+    await nextTurn();
+    global.gc();
+    if (!cachedPairExists()) return;
+  }
+  assert.equal(cachedPairExists(), false);
+});
+
+test('equality query operands match compressed writes on cold and warm caches', async () => {
+  const value = 'compressible'.repeat(25);
+  const cases = [
+    {
+      write: (ref, content) => ref.child(content).set(content),
+      query: ref => ref.orderByValue(),
+      storedValue: write => write.value
+    },
+    {
+      write: (ref, content) => ref.child(content).set({field: content}),
+      query: ref => ref.orderByChild('field'),
+      storedValue: write => write.value.field
+    }
+  ];
+  for (const [index, {write, query, storedValue}] of cases.entries()) {
+    // A distinct capacity gives each case an empty cache before either the query or write.
+    const {database, specification, configuration, writes} = createDatabase(null, 1, {
+      compression: 'deflate', encryptionCacheSize: 6100 + index
+    });
+    specification.rules.collection = {
+      $: {'.encrypt': {key: '#', value: '#'}, field: {'.encrypt': {value: '#'}}}
+    };
+    database.configureFireCrypt(configuration, specification);
+    const ref = database.ref('collection');
+    query(ref).equalTo(value, value);
+    assert.ok(writes[0].value.value.startsWith('\x91E'));
+    assert.equal(writes[0].value.key, encrypt(value));
+    await write(ref, value);
+    query(ref).equalTo(value, value);
+    assert.equal(writes[0].value.value, storedValue(writes[1]));
+    assert.deepEqual(writes[2].value, writes[0].value);
+    ref.orderByKey().equalTo(value);
+    assert.equal(writes[3].value.value, encrypt(value));
+  }
+});
 
 function values() {
   return {
