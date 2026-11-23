@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const {createHash} = require('node:crypto');
 const {test} = require('node:test');
 const {setImmediate: nextTurn} = require('node:timers/promises');
 const {getFireCryptCacheStats, wrapDatabase} = require('../dist/node/firecrypt');
@@ -145,6 +146,29 @@ test('equivalent wrappers share caches across repeated configuration', async () 
   assert.deepEqual(second.database.fireCryptStats.caches, before[0]);
   assert.deepEqual(stats(), before);
   assert.equal(snap.val(), value);
+});
+
+test('strings deflate cannot shrink round-trip with a cold decryption cache', async () => {
+  const value = createHash('shake256', {outputLength: 150}).update('firecrypt-uncompressible')
+    .digest().map(byte => 32 + byte % 95).toString('ascii');
+  const {database, writes, configuration} = createDatabase(null, 1, {
+    compression: 'deflate', encryptionCacheSize: 6021
+  });
+  await database.ref('records/person/items').set([value]);
+  const stats = database.fireCryptStats.compression;
+  assert.equal(stats.attempts, 1);
+  assert.equal(stats.thresholdAccuracy, 0);
+  const stored = writes.at(-1).value[0];
+  const {database: reader} = createDatabase(stored, 1, {
+    ...configuration, decryptionCacheSize: 6022
+  });
+  const snapshot = await reader.ref().once('value');
+  assert.equal(snapshot.val(), value);
+  assert.equal(stored, encrypt(value));
+
+  const plaintext = createDatabase(null, 1, {...configuration, encryption: 'none'});
+  await plaintext.database.ref('records/person/items').set([value]);
+  assert.deepEqual(plaintext.writes.at(-1).value, [value]);
 });
 
 test('configuration changes isolate keys, modes, compression, and limits', async () => {

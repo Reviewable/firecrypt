@@ -236,9 +236,8 @@ var firecrypt = (function (exports) {
       let typeCode = type.charAt(0).toUpperCase();
       let result;
       if (pattern === '#') {
-        if (shouldCompress) {
-          const compressedValue = this._compress(value);
-          if (!this._encryptString && typeof compressedValue === 'string') return value;
+        const compressedValue = shouldCompress ? this._compress(value) : undefined;
+        if (compressedValue && typeof compressedValue !== 'string') {
           if (this._encryptString) {
             typeCode = 'E';
             result = this.encryptValue(compressedValue, type);
